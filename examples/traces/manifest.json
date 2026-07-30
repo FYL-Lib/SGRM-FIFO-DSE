@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "runtime": {
+    "lightningsim": "0.2.6",
+    "python": "3.12"
+  },
+  "designs": [
+    {
+      "design": "bicg",
+      "solution_dir": "bicg/solution1",
+      "trace_sha256": "88c68755bfbf99d6c451765fdc89b69d2fc7604632790b5860cce273553aca63",
+      "metadata": {
+        "hls_app_sha256": "5d12636798ab5c7aba12ad7220029343f270bce21220f26e4533c0f1603ca109"
+      },
+      "expected": {
+        "fifo_count": 44,
+        "group_count": 2,
+        "evaluations": 11,
+        "selected_evaluation": 3,
+        "cutil_reduction_pct": 11.833385926159666,
+        "raw_resource_reduction_pct": 10.853835021707669,
+        "baseline": {
+          "deadlock": false,
+          "latency": 835.0,
+          "bram": 0,
+          "uram": 0,
+          "ff": 572,
+          "lut": 2883,
+          "raw_resource_sum": 3455
+        },
+        "selected": {
+          "deadlock": false,
+          "latency": 834.0,
+          "bram": 0,
+          "uram": 0,
+          "ff": 572,
+          "lut": 2508,
+          "raw_resource_sum": 3080
+        }
+      }
+    }
+  ]
+}

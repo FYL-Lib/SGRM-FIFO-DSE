@@ -1,0 +1,9 @@
+name: sgrm
+channels:
+  - conda-forge
+  - https://sharc-lab.github.io/LightningSim/repo
+dependencies:
+  - python=3.12
+  - lightningsim=0.2.6
+  - llvmlite=0.43
+  - pip
