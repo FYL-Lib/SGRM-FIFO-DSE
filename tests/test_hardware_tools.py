@@ -68,23 +68,11 @@ def test_resolve_tool_uses_path_not_author_installation(tool_paths, monkeypatch)
     assert hardware.resolve_tool("vitis_hls", "Vitis HLS", "--vitis-hls") == tool_paths["hls"]
 
 
-def test_resolve_tool_expands_user_path(tool_paths, monkeypatch):
-    root = str(Path(tool_paths["hls"]).parent.parent)
-
-    def expand_user(value):
-        # pathlib passes either the home component or the complete path,
-        # depending on the Python release. Preserve the remainder in both cases.
-        value = os.fspath(value)
-        if value == "~":
-            return root
-        if value.startswith("~/"):
-            return str(Path(root) / value[2:])
-        return value
-
-    assert expand_user("~") == root
-    assert expand_user(Path("~/bin/vitis_hls")) == tool_paths["hls"]
-    monkeypatch.setattr(hardware.os.path, "expanduser", expand_user)
-    assert hardware.resolve_tool("~/bin/vitis_hls", "Vitis HLS", "--vitis-hls") == tool_paths["hls"]
+def test_resolve_tool_expands_user_path(tool_paths):
+    # Exercise real pathlib behavior without changing the user's environment
+    # or relying on version-specific internal function lookup.
+    relative = os.path.relpath(tool_paths["hls"], Path.home())
+    assert hardware.resolve_tool("~/" + relative, "Vitis HLS", "--vitis-hls") == tool_paths["hls"]
 
 
 def test_wrapper_does_not_create_an_invented_install_root(tmp_path, monkeypatch):
