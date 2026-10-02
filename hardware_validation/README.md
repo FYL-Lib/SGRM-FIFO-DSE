@@ -84,6 +84,17 @@ python hardware_validation/validate_hardware.py \
 The complete plan is saved as `plan.json`. Each job has a `configuration.json`
 containing source checksums, the input result/trace checksums, and the exact
 depth/implementation choices. Original bundle files are never rewritten.
+The two configurations have readable paths:
+
+```text
+work/
+  bicg/
+    native/    original configuration
+    sgrm/      optimized configuration
+```
+
+Checksums are internal verification metadata, not configuration names. The
+workflow checks them automatically; no checksum needs to be typed manually.
 
 To build only the native and selected `bicg` configurations:
 
@@ -116,6 +127,11 @@ design is silently removed from a complete-corpus aggregate. A selected
 configuration is rejected if HLS reports automatically increasing its FIFO
 depth, rather than silently measuring a different configuration.
 
+Existing plans created by earlier releases remain supported: `run` and
+`report` use the work directories recorded in their plan. When preparing
+after a script update or changing FIFO choices, choose a fresh `--output-dir`
+to preserve existing projects and measurements.
+
 Rebuild the summaries without invoking tools:
 
 ```bash
@@ -131,7 +147,8 @@ Outputs:
 - `paired_comparison.csv`: native/selected costs and resource reductions for
   each completed pair.
 - `summary.json`: completed coverage and geometric-mean resource reduction.
-- `work/<design>/...`: exact C++ configurations, Tcl scripts, logs, and reports.
+- `work/<design>/native/`: original C++ configuration, scripts, logs, and reports.
+- `work/<design>/sgrm/`: optimized C++ configuration, scripts, logs, and reports.
 
 `PASS` requires all requested native/selected pairs to succeed. Partial results
 are labeled `INCOMPLETE` and the command returns a nonzero exit status.

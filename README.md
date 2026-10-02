@@ -111,13 +111,16 @@ ls -l results/three-design-hardware/
 
 diff -u \
   results/three-design-hardware/work/bicg/native/src/bicg.cpp \
-  results/three-design-hardware/work/bicg/sgrm-*/src/bicg.cpp
+  results/three-design-hardware/work/bicg/sgrm/src/bicg.cpp
 ```
 
 Changes to FIFO pragmas are expected. `diff` returns status 1 when it finds
 differences. Each work directory also contains `configuration.json`,
 `run_hls.tcl`, and `run_vivado.tcl`; `plan.json` records all six jobs.
 Do not edit staged files after preparation: their checksums are verified.
+Directory names use the design and configuration labels, such as
+`work/bicg/native` and `work/bicg/sgrm`. Integrity metadata is handled
+automatically; you do not need to read or enter checksum values.
 
 ### 2. Configure the hardware tools
 

@@ -35,20 +35,8 @@ diagnosing the repository itself.
 
 ## Included bicg trace
 
-The repository versions one small real trace. Run it directly:
-
-```bash
-sgrm-trace-search \
-  --solution-dir examples/traces/bicg/solution1 \
-  --design bicg \
-  --budget 1000 \
-  --seed 1 \
-  --epsilon 0 \
-  --expected-trace-sha256 88c68755bfbf99d6c451765fdc89b69d2fc7604632790b5860cce273553aca63 \
-  --output results/bicg.json
-```
-
-Or use the manifest-driven path:
+The repository versions one small real trace. Use its supplied manifest to
+run the search and integrity checks automatically:
 
 ```bash
 sgrm-trace-batch \
@@ -59,6 +47,9 @@ sgrm-verify-results \
   --manifest examples/traces/manifest.json \
   --results-dir results/bicg
 ```
+
+The manifest supplies the reference checksums internally. You do not need to
+read or manually enter them; results use the design name, such as `bicg.json`.
 
 The verifier should print `PASS bicg`. Its reference checks include:
 

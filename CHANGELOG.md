@@ -4,6 +4,10 @@ All notable changes to the SGRM core package are documented here.
 
 ## Unreleased
 
+- Use readable `native` and `sgrm` hardware-project directories while preserving
+  automatic integrity checks and support for existing plans.
+- Simplified trace-search examples and integrity-error messages so ordinary
+  commands do not require manually entered checksum values.
 - Added the original 30 Stream-HLS sources, testbenches, and workload inputs as
   an independently checksummed optional bundle with upstream license attribution.
 - Added exact FIFO depth/implementation rewriting from trace-search JSON results.

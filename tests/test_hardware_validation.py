@@ -205,3 +205,141 @@ def test_published_source_bundle_covers_all_thirty_designs(tmp_path):
         assert (directory / design["kernel"]).is_file()
         assert (directory / design["testbench"]).is_file()
         assert any(name.startswith("data/") for name in design["files"])
+
+
+@pytest.fixture
+def preparation_inputs(tmp_path):
+    contract, result = contract_and_result()
+    source_root = tmp_path / "source-bundle"
+    original = source_root / "example"
+    kernel = original / "src/example.cpp"
+    testbench = original / "src/example_tb.cpp"
+    kernel.parent.mkdir(parents=True)
+    kernel.write_text(
+        "void forward() {\n"
+        "  hls::stream<float> channels[2];\n"
+        "  #pragma HLS STREAM variable=channels depth=82\n"
+        "  #pragma HLS bind_storage variable=channels type=fifo impl=bram\n"
+        "}\n"
+    )
+    testbench.write_text("int main() { return 0; }\n")
+    contract.update({
+        "directory": "example",
+        "kernel": "src/example.cpp",
+        "testbench": "src/example_tb.cpp",
+        "top": "forward",
+        "files": {
+            str(path.relative_to(original)): {
+                "bytes": path.stat().st_size,
+                "sha256": hardware.sha256(path),
+            }
+            for path in (kernel, testbench)
+        },
+    })
+    manifest = {
+        "designs": [contract],
+        "part": "xcvc1902-vsva2197-2MP-e-S",
+        "clock_period_ns": 10.0,
+        "hardware_protocol": {
+            "unsafe_math_optimizations": True,
+            "disable_block_condition_registers": True,
+        },
+    }
+    hardware.write_json(source_root / "manifest.json", manifest)
+    results_dir = tmp_path / "search-results"
+    hardware.write_json(results_dir / "example.json", result)
+    return source_root, manifest, results_dir, tmp_path / "hardware"
+
+
+def test_prepare_uses_readable_names_and_preserves_fifo_choices(preparation_inputs):
+    source_root, manifest, results_dir, output = preparation_inputs
+    plan = hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])
+    assert [job["variant"] for job in plan["jobs"]] == ["native", "sgrm"]
+    assert [Path(job["run_dir"]) for job in plan["jobs"]] == [
+        output / "work/example/native", output / "work/example/sgrm",
+    ]
+    assert (output / "work/example/native/src/example.cpp").read_bytes() == (
+        source_root / "example/src/example.cpp"
+    ).read_bytes()
+    selected = plan["jobs"][1]
+    assert selected["requested_choices_by_source_variable"] == {
+        "channels": {"depth": 2, "implementation": "srl"},
+    }
+    text = (Path(selected["run_dir"]) / "src/example.cpp").read_text()
+    assert "STREAM variable=channels depth=2" in text
+    assert "bind_storage variable=channels type=fifo impl=srl" in text
+
+
+def test_prepare_same_configuration_keeps_the_same_plan(preparation_inputs):
+    source_root, manifest, results_dir, output = preparation_inputs
+    first = hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])
+    second = hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])
+    assert second == first
+
+
+def test_prepare_changed_choices_preserves_existing_selected_files(preparation_inputs):
+    source_root, manifest, results_dir, output = preparation_inputs
+    plan = hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])
+    selected_dir = Path(plan["jobs"][1]["run_dir"])
+    before = {
+        path.relative_to(selected_dir): path.read_bytes()
+        for path in selected_dir.rglob("*") if path.is_file()
+    }
+    result_path = results_dir / "example.json"
+    result = hardware.read_json(result_path)
+    result["selected"]["fifo_depths"] = {"0": 4, "1": 4}
+    hardware.write_json(result_path, result)
+    with pytest.raises(ValueError, match="fresh --output-dir"):
+        hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])
+    after = {
+        path.relative_to(selected_dir): path.read_bytes()
+        for path in selected_dir.rglob("*") if path.is_file()
+    }
+    assert after == before
+    assert hardware.read_json(output / "plan.json") == plan
+
+
+@pytest.fixture
+def legacy_cached_job(tmp_path, monkeypatch):
+    fingerprint = hardware.object_hash({"legacy_configuration": True})
+    run_dir = tmp_path / "work/example" / ("sgrm-" + fingerprint[:16])
+    source = run_dir / "src/example.cpp"
+    source.parent.mkdir(parents=True)
+    source.write_text("void forward() {}\n")
+    report = run_dir / "hierarchical.rpt"
+    report.write_text("cached report\n")
+    job = {
+        "design": "example",
+        "variant": "sgrm",
+        "fingerprint": fingerprint,
+        "run_dir": str(run_dir),
+        "source_files_sha256": {"src/example.cpp": hardware.sha256(source)},
+    }
+    state = {
+        "status": "OK",
+        "fingerprint": fingerprint,
+        "report_sha256": {str(report): hardware.sha256(report)},
+    }
+    hardware.write_json(run_dir / "status.json", state)
+
+    def unexpected_tool_call(*args, **kwargs):
+        pytest.fail("a valid cached job must not invoke hardware tools")
+
+    monkeypatch.setattr(hardware, "command", unexpected_tool_call)
+    return job, state, source, report
+
+
+def test_legacy_named_completed_job_is_reused_without_synthesis(legacy_cached_job, capsys):
+    job, state, _, _ = legacy_cached_job
+    assert hardware.run_job(job, "unused-tool", "2024.2") == state
+    assert capsys.readouterr().out.strip() == "CACHED example/sgrm"
+
+
+@pytest.mark.parametrize("changed_file", ["source", "report"])
+def test_legacy_cache_still_rejects_changed_files(legacy_cached_job, changed_file):
+    job, _, source, report = legacy_cached_job
+    path = source if changed_file == "source" else report
+    path.write_text("changed after preparation\n")
+    message = "staged input changed" if changed_file == "source" else "cached report changed"
+    with pytest.raises(ValueError, match=message):
+        hardware.run_job(job, "unused-tool", "2024.2")

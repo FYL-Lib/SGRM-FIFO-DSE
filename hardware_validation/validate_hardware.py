@@ -268,8 +268,8 @@ def prepare_jobs(source_root: Path, manifest: dict, results_dir: Path, output: P
                 "variant": variant,
                 "choices": config,
             })
-            tag = "native" if variant == "native" else "sgrm-" + fingerprint[:16]
-            run_dir = output / "work" / name / tag
+            # Keep user-facing paths readable; the fingerprint guards reuse only.
+            run_dir = output / "work" / name / variant
             record_path = run_dir / "configuration.json"
             if record_path.is_file() and read_json(record_path).get("fingerprint") != fingerprint:
                 raise ValueError(f"incompatible existing workdir; choose a fresh --output-dir: {run_dir}")

@@ -34,13 +34,15 @@ ls -l results/three-design-hardware/
 
 diff -u \
   results/three-design-hardware/work/bicg/native/src/bicg.cpp \
-  results/three-design-hardware/work/bicg/sgrm-*/src/bicg.cpp
+  results/three-design-hardware/work/bicg/sgrm/src/bicg.cpp
 ```
 
 FIFO pragma changes are expected; `diff` returns status 1 when it finds them.
 `plan.json` records the jobs, and each work directory contains its exact
 configuration and generated Tcl scripts. File and directory names shown in
 documentation are for inspection, not commands to paste into a shell.
+Native and optimized projects use the readable directory names `native` and
+`sgrm`; integrity checks run automatically without entering checksum values.
 
 ## 2. Run HLS and Vivado RTL synthesis
 

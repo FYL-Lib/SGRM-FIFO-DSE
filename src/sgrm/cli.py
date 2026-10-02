@@ -75,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, help="write result JSON to this path")
     parser.add_argument(
         "--expected-trace-sha256",
-        help="abort if trace.pkl does not match this SHA-256 digest",
+        help="reference checksum; supplied automatically by sgrm-trace-batch",
     )
     parser.add_argument("--verbose", action="store_true")
     return parser
@@ -107,13 +107,14 @@ def main(argv: list[str] | None = None) -> int:
         and trace_sha256.lower() != args.expected_trace_sha256.lower()
     ):
         raise SystemExit(
-            "trace SHA-256 mismatch: "
-            f"expected {args.expected_trace_sha256}, got {trace_sha256}"
+            "trace integrity check failed: trace.pkl does not match the "
+            "expected file. Use a trusted manifest with sgrm-trace-batch."
         )
     if not args.expected_trace_sha256:
         logging.warning(
-            "trace.pkl uses Python pickle; load only a trusted trace and pass "
-            "--expected-trace-sha256 when a reference digest is available"
+            "trace.pkl uses Python pickle; load only a trusted trace. "
+            "Use sgrm-trace-batch with a trusted manifest for automatic "
+            "integrity checks."
         )
 
     started = time.perf_counter()
