@@ -2,7 +2,7 @@
 
 This workflow measures the synthesized FIFO resources of the original 30
 Stream-HLS designs and their SGRM-selected configurations. It takes your own
-trace-search JSON results as input; it does not substitute an author's selected
+trace-search JSON results as input; it does not substitute a fixed selected
 configuration or use analytical estimates as measured resource values.
 
 The versioned source bundle contains the original C++ kernels, C++ testbenches,
@@ -16,25 +16,28 @@ an explicit `bind_storage type=fifo impl=...` directive, including for SRL.
 - Python 3.10 or newer; the validation script uses the standard library only.
 - AMD **classic Vitis HLS 2024.2** and **Vivado 2024.2**, including the VCK190 part
   `xcvc1902-vsva2197-2MP-e-S` and the required tool licenses.
-- A configured AMD environment in which `vitis_hls` can invoke Vivado. Tool
-  binaries, licenses, and vendor headers are not included in this repository.
+- Trusted vendor or site settings that can configure the installed AMD tools.
+  Tool binaries, licenses, and vendor headers are not included in this repository.
 - Per-design JSON results from the [30-design trace searches](../REPRODUCING.md).
 
 AMD tools are needed only for `--stage run` or `--stage all` (the default).
 `--stage prepare` and `--stage report` do not require them. Search replay does
 not require them either. Conda supplies the Python environment, not AMD tools.
 
-Follow [Hardware tool setup](TOOLS.md) using your own installation paths, then
-check both tools before starting any hardware job:
+Check both tools before starting any hardware job; no manual sourcing of AMD
+settings is required for a standard installation:
 
 ```bash
 python hardware_validation/validate_hardware.py --stage check-tools
 ```
 
-This standalone command checks resolved executable paths and versions only;
-it needs no search results or prepared plan and does not start synthesis.
-Both releases must be 2024.2. A newer `vitis_hls` wrapper that forwards to
-`vitis-run` is rejected with instructions for selecting the classic interface.
+This standalone command discovers installed tools, loads their settings in a
+private child environment, checks paths and versions, and saves the validated
+configuration in `.sgrm-tools.json`. It needs no search results or prepared plan
+and does not start synthesis. Both releases must be 2024.2. Automatic discovery
+skips incompatible candidates, including newer unified wrappers, and continues
+looking. See [Hardware tool setup](TOOLS.md) for nonstandard installation roots,
+explicit executable selection, and site settings.
 
 The source archive is approximately 28 MiB compressed (37.8 MB uncompressed).
 Hardware-tool installations and generated projects need additional disk space;
@@ -42,7 +45,7 @@ the 1.5 GiB search-replay allowance does not cover synthesis. Storage and runtim
 depend on the chosen parallelism and tool installation. Start with one paired
 design to measure the requirements on your host.
 
-For scale, the author's retained native/SGRM projects for these 60 jobs occupy
+For scale, retained native/SGRM projects for these 60 jobs occupied
 approximately 10.8 GiB, excluding the AMD installation and transient working
 files. This is an observed retained size, not a peak-space guarantee; reserving
 several tens of GiB for generated projects is prudent. A 4 TB SSD is not a
@@ -70,13 +73,16 @@ memory-constrained host. Use `--vitis-hls` and `--vivado` with the full paths to
 your classic HLS and Vivado executables to select installations explicitly;
 see [the setup guide](TOOLS.md) for complete commands. `VITIS_HLS` and `VIVADO`
 can also provide the executable paths. Explicit flags take precedence, then
-these environment variables, then the commands found on `PATH`.
+these environment variables, saved configuration, AMD installation variables,
+commands on `PATH`, and common installation directories.
 
 Every `run` or `all` invocation repeats the tool precheck before launching
-jobs. Explicit tool selections apply to that invocation, so repeat the flags
-when resuming. For standard AMD installations, the child-process environment
-selects the checked HLS/Vivado roots and their executable directories; the
-calling shell is not modified. The HLS Tcl export step invokes Vivado, rather
+jobs. After a successful precheck, saved tool paths and settings are reused;
+there is no need to repeat executable flags when resuming. The child-process
+environment loads the settings and selects the checked HLS/Vivado roots and
+their executable directories; the calling shell is not modified. The full
+environment and license values are not stored in the configuration. The HLS
+Tcl export step invokes Vivado, rather
 than treating `run_vivado.tcl` as a standalone Vivado Tcl script.
 
 The default target is VCK190 at 10 ns. Both variants use the same compiler

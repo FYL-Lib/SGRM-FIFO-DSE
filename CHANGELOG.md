@@ -4,6 +4,12 @@ All notable changes to the SGRM core package are documented here.
 
 ## Unreleased
 
+- Added automatic AMD-tool discovery, private settings loading, and readable
+  machine-local configuration reused across terminals and hardware runs.
+- Distinguished undiscovered tools from incompatible installations while
+  preserving the classic 2024.2 protocol and tool-free preparation/reporting.
+- Added first-run, cached-configuration, environment-isolation, and
+  multiple-installation regression tests without invoking synthesis.
 - Use readable `native` and `sgrm` hardware-project directories while preserving
   automatic integrity checks and support for existing plans.
 - Simplified trace-search examples and integrity-error messages so ordinary

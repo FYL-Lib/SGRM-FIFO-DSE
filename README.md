@@ -131,31 +131,37 @@ automatically; you do not need to read or enter checksum values.
 
 ### 2. Configure the hardware tools
 
-Install and configure **classic Vitis HLS 2024.2** and **Vivado 2024.2**, including
+Install **classic Vitis HLS 2024.2** and **Vivado 2024.2**, including
 the VCK190 part `xcvc1902-vsva2197-2MP-e-S` and the required licenses.
-Use the installation paths on **your own machine**. See
-[Hardware tool setup](hardware_validation/TOOLS.md) for interactive commands
-to load your `settings64.sh` files and select explicit executable paths.
-If your AMD environment is already loaded, run this precheck from the
-repository root:
+You do not need to source AMD settings manually before the precheck. Keep the
+Python environment activated and run from the repository root:
 
 ```bash
 python hardware_validation/validate_hardware.py --stage check-tools
 python -c "import sgrm; print(sgrm.__file__)"
 ```
 
-The precheck prints the resolved paths and requires both tools to report
-2024.2. It does not start synthesis or create hardware projects. Python should
-still import this checkout. Tool binaries, licenses, and vendor headers are
-not included; licenses and device support are checked during the hardware run.
-No physical board is required. Both configurations target VCK190 at 10 ns.
+The precheck discovers tools using saved configuration, AMD environment
+variables, `PATH`, and common installation directories. It loads their
+`settings64.sh` files privately, verifies both versions, and saves the validated
+paths in the machine-local `.sgrm-tools.json`. Later hardware commands reuse
+this configuration automatically, including from a new terminal. Your parent
+terminal and Python environment are not changed.
+
+If your installation uses a nonstandard directory, supply `--tool-root` once;
+see [Hardware tool setup](hardware_validation/TOOLS.md) for commands and explicit
+tool selection. A discovery failure means the tools were not located, not
+necessarily that they are uninstalled. Incompatible installations are reported
+separately. The precheck does not start synthesis or create hardware projects.
+Tool binaries, licenses, and vendor headers are not included; licenses and
+device support are checked during the hardware run. No physical board is
+required. Both configurations target VCK190 at 10 ns.
 
 An executable named `vitis_hls` can forward to the newer `vitis-run` interface.
-An error about an unrecognized `-version` option does not mean SGRM search has
-failed: select the classic 2024.2 executable as described in the setup guide.
+Automatic discovery skips incompatible candidates and tries other installations.
+An explicitly selected incompatible executable is rejected rather than replaced.
 The unified CLI is not a supported substitute for this measurement workflow.
-If `vivado` is not found, load its own installation's environment before
-continuing. You can stop after preparation without either AMD tool.
+You can stop after preparation without either AMD tool.
 
 ### 3. Run the six hardware jobs
 

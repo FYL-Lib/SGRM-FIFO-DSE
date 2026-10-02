@@ -16,6 +16,16 @@ hardware = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(hardware)
 
 
+@pytest.fixture(autouse=True)
+def isolated_tool_setup(tmp_path, monkeypatch):
+    # Unit tests must never discover the host's real tools or save host config.
+    monkeypatch.setattr(hardware, "DEFAULT_TOOL_CONFIG", tmp_path / ".sgrm-tools.json")
+    monkeypatch.setattr(hardware, "standard_tool_roots", lambda: [])
+    monkeypatch.setattr(hardware, "load_amd_environment", lambda scripts, base: base.copy())
+    for variable in ("VITIS_HLS", "VIVADO", "XILINX_HLS", "XILINX_VIVADO", "XILINX_VITIS"):
+        monkeypatch.delenv(variable, raising=False)
+
+
 @pytest.fixture
 def tool_paths(tmp_path):
     paths = {}
@@ -248,7 +258,7 @@ def test_run_cli_forwards_checked_tools_to_every_job(tool_paths, monkeypatch, tm
         "executables": tool_paths, "versions": {"hls": "Vitis HLS v2024.2", "vivado": "Vivado v2024.2"},
         "environment": hardware.hardware_environment(tool_paths),
     }
-    monkeypatch.setattr(hardware, "check_tools", lambda *args: checked)
+    monkeypatch.setattr(hardware, "check_tools", lambda *args, **kwargs: checked)
     monkeypatch.setattr(hardware, "collect_reports", lambda *args: {"status": "PASS"})
     calls = []
 

@@ -32,6 +32,8 @@ resource_calibration.json
 *.tar.gz
 .env
 *.env
+.sgrm-tools.json
+.sgrm-tools.json.tmp
 .DS_Store
 .ipynb_checkpoints/
 coverage.xml

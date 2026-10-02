@@ -24,6 +24,7 @@ import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Iterable
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -42,6 +43,156 @@ FIFO_MODULE = re.compile(r"_fifo_w\d+_d\d+(?:_[A-Z])?(?:_\d+)?$")
 AUTO_DEPTH = re.compile(r"depth is automatically increased", re.IGNORECASE)
 RESOURCE_CAPACITIES = {"bram": 967, "uram": 463, "ff": 1799680, "lut": 899840}
 TOOL_VERSION = "2024.2"
+DEFAULT_TOOL_CONFIG = REPOSITORY / ".sgrm-tools.json"
+
+
+def standard_tool_roots() -> list[Path]:
+    """Bounded directory discovery, not a recursive scan of the filesystem."""
+    roots = []
+    for parent in (Path("/opt"), Path("/tools"), Path("/usr/local"), Path.home()):
+        for brand in ("Xilinx", "AMD"):
+            roots.append(parent / brand)
+            roots.extend(sorted(path for path in parent.glob(brand + "*") if path.is_dir()))
+    return list(dict.fromkeys(roots))
+
+
+def paths_in_tool_root(root: Path, key: str) -> list[Path]:
+    """Accept an installation base, a release directory, or a product root."""
+    product = "Vitis_HLS" if key == "hls" else "Vivado"
+    executable = "vitis_hls" if key == "hls" else "vivado"
+    patterns = (
+        f"bin/{executable}", f"*/bin/{executable}",
+        f"{product}/bin/{executable}", f"{product}/*/bin/{executable}",
+        f"*/{product}/bin/{executable}",
+    )
+    found = [path for pattern in patterns for path in root.glob(pattern) if path.is_file()]
+    if key == "hls":
+        # Some Vitis releases include a classic launcher; others expose only
+        # the unified CLI. Keep the latter as diagnostic candidates, not support.
+        for name in ("vitis_hls", "vitis-run"):
+            for pattern in (f"bin/{name}", f"Vitis/*/bin/{name}", f"*/Vitis/bin/{name}"):
+                found.extend(path for path in root.glob(pattern) if path.is_file())
+    return sorted(set(found), key=lambda path: (TOOL_VERSION not in path.parts, str(path)))
+
+
+def read_tool_config(path: Path | None) -> dict:
+    if path is None or not path.is_file():
+        return {}
+    try:
+        saved = read_json(path)
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"cannot read tool configuration {path}; repair it or use a new --tool-config") from exc
+    allowed = {"schema_version", "tool_version", "vitis_hls", "vivado", "settings_files"}
+    if saved.get("schema_version") != 1 or set(saved) - allowed:
+        raise ValueError(f"unsupported tool configuration: {path}; use a new --tool-config")
+    for key in ("vitis_hls", "vivado"):
+        if not isinstance(saved.get(key), str) or not saved[key]:
+            raise ValueError(f"{path}: {key} must be an executable path")
+    if not isinstance(saved.get("settings_files", []), list) or any(
+        not isinstance(item, str) for item in saved.get("settings_files", [])
+    ):
+        raise ValueError(f"{path}: settings_files must be a list of paths")
+    return saved
+
+
+def discover_tool(
+    key: str, value: str | None, saved: dict, roots: list[Path] | None,
+) -> tuple[Iterable[tuple[str, str]], bool]:
+    label, command_name, variable, option = (
+        ("Vitis HLS", "vitis_hls", "VITIS_HLS", "--vitis-hls")
+        if key == "hls" else ("Vivado", "vivado", "VIVADO", "--vivado")
+    )
+    requested = value if value is not None else os.environ.get(variable)
+    if requested is not None:
+        # An explicit override must not silently select a different install.
+        return [(resolve_tool(requested, label, option), "explicit selection")], True
+
+    def locations() -> Iterable[tuple[str | Path, str]]:
+        if saved.get(command_name):
+            yield saved[command_name], "saved configuration"
+        vendor_variables = ("XILINX_HLS", "XILINX_VITIS") if key == "hls" else ("XILINX_VIVADO", "XILINX_VITIS")
+        for vendor_variable in vendor_variables:
+            if os.environ.get(vendor_variable):
+                for path in paths_in_tool_root(Path(os.environ[vendor_variable]).expanduser(), key):
+                    yield path, vendor_variable
+        yield command_name, "PATH"
+        if key == "hls":
+            yield "vitis-run", "PATH (unified CLI)"
+        for root in standard_tool_roots() if roots is None else roots:
+            for path in paths_in_tool_root(root, key):
+                yield path, "installation search"
+
+    def candidates() -> Iterable[tuple[str, str]]:
+        seen = set()
+        for candidate, origin in locations():
+            found = shutil.which(str(Path(candidate).expanduser()))
+            if found is not None:
+                path = str(Path(found).resolve())
+                if path not in seen:
+                    seen.add(path)
+                    yield path, origin
+
+    return candidates(), False
+
+
+def installation_settings(executables: dict[str, str]) -> list[Path]:
+    scripts = []
+    for key in ("hls", "vivado"):
+        if key not in executables:
+            continue
+        binary = Path(executables[key])
+        path = binary.parent.parent / "settings64.sh"
+        if binary.parent.name == "bin" and path.is_file() and path not in scripts:
+            scripts.append(path)
+    return scripts
+
+
+def load_amd_environment(scripts: list[Path], base: dict[str, str]) -> dict[str, str]:
+    """Source trusted installation scripts privately; never write an env dump."""
+    if not scripts:
+        return base.copy()
+    for path in scripts:
+        if not path.is_file():
+            raise FileNotFoundError(f"AMD settings file not found: {path}; update --settings or the saved configuration")
+    bash = shutil.which("bash") or ("/bin/bash" if Path("/bin/bash").is_file() else None)
+    env_command = shutil.which("env") or ("/usr/bin/env" if Path("/usr/bin/env").is_file() else None)
+    if bash is None or env_command is None:
+        raise RuntimeError("automatic AMD environment loading requires Bash and env on Linux")
+    script = (
+        'SGRM_ENV_COMMAND="$1"; shift\n'
+        'for SGRM_SETTINGS_FILE in "$@"; do\n'
+        '  source "$SGRM_SETTINGS_FILE" >/dev/null || exit 1\n'
+        'done\n'
+        '"$SGRM_ENV_COMMAND" -0\n'
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="sgrm-settings-") as directory:
+            process = subprocess.run(
+                [bash, "--noprofile", "--norc", "-c", script, "sgrm-settings", env_command,
+                 *map(str, scripts)],
+                cwd=directory, env=base, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("AMD settings loading timed out after 30 s; check the installation scripts") from exc
+    if process.returncode:
+        raise RuntimeError(
+            f"AMD environment setup failed (exit {process.returncode}) for "
+            + ", ".join(map(str, scripts)) + "; check these settings files on this machine"
+        )
+    environment = {}
+    for item in process.stdout.split(b"\0"):
+        if item:
+            name, separator, value = item.partition(b"=")
+            if not separator:
+                raise RuntimeError("AMD settings did not return a valid environment")
+            environment[os.fsdecode(name)] = os.fsdecode(value)
+    # Do not leave a deleted temporary directory recorded as the child's PWD.
+    if "PWD" in base:
+        environment["PWD"] = base["PWD"]
+    else:
+        environment.pop("PWD", None)
+    return environment
 
 
 def resolve_tool(value: str, label: str, option: str) -> str:
@@ -56,11 +207,13 @@ def resolve_tool(value: str, label: str, option: str) -> str:
     return str(Path(path).resolve())
 
 
-def hardware_environment(executables: dict[str, str]) -> dict[str, str]:
+def hardware_environment(
+    executables: dict[str, str], base_environment: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Select the checked installations for child processes, not the user's shell."""
-    environment = os.environ.copy()
-    bins = [str(Path(path).parent) for path in executables.values()]
-    environment["PATH"] = os.pathsep.join([*bins, environment.get("PATH", "")])
+    environment = (os.environ if base_environment is None else base_environment).copy()
+    bins = [str(Path(executables[key]).parent) for key in ("hls", "vivado") if key in executables]
+    environment["PATH"] = os.pathsep.join([*bins, *([environment["PATH"]] if environment.get("PATH") else [])])
     for key, variable in (("hls", "XILINX_HLS"), ("vivado", "XILINX_VIVADO")):
         if key not in executables:
             continue
@@ -124,37 +277,106 @@ def probe_tool(path: str, key: str, environment: dict[str, str]) -> str:
     return output
 
 
-def check_tools(vitis_hls: str, vivado: str) -> dict:
-    """Check both tools even when one is missing; never launch a Tcl project."""
+def check_tools(
+    vitis_hls: str | None = None, vivado: str | None = None, *,
+    config_path: Path | None = None, search_roots: list[Path] | None = None,
+    settings_files: list[Path] | None = None, save_config: bool = False,
+) -> dict:
+    """Discover, privately configure, and verify tools without a Tcl project."""
     executables, versions, errors = {}, {}, []
-    specs = (("hls", "Vitis HLS", vitis_hls, "--vitis-hls"), ("vivado", "Vivado", vivado, "--vivado"))
-    for key, label, value, option in specs:
+    config_path = config_path.expanduser().resolve() if config_path is not None else None
+    saved = read_tool_config(config_path)
+    reuse_saved_settings = bool(saved)
+    if saved:
+        for key, value, variable in (("vitis_hls", vitis_hls, "VITIS_HLS"), ("vivado", vivado, "VIVADO")):
+            requested = value if value is not None else os.environ.get(variable, saved[key])
+            found = shutil.which(str(Path(requested).expanduser()))
+            if found is None or str(Path(found).resolve()) != saved[key]:
+                reuse_saved_settings = False
+    roots = None if search_roots is None else [path.expanduser().resolve() for path in search_roots]
+    custom_settings = [path.expanduser().resolve() for path in settings_files or []]
+    for path in custom_settings:
+        if not path.is_file():
+            raise FileNotFoundError(f"AMD settings file not found: {path}")
+    final_settings, environment = [], os.environ.copy()
+    # Establish a compatible Vivado installation before probing HLS device data.
+    for key, label, value, option in (
+        ("vivado", "Vivado", vivado, "--vivado"), ("hls", "Vitis HLS", vitis_hls, "--vitis-hls")
+    ):
         try:
-            executables[key] = resolve_tool(value, label, option)
-            print(f"FOUND {label}: {executables[key]}", flush=True)
+            candidates, strict = discover_tool(key, value, saved, roots)
         except FileNotFoundError as exc:
             errors.append(str(exc))
-    environment = hardware_environment(executables)
-    for key, label, _, _ in specs:
-        if key not in executables:
             continue
-        try:
-            versions[key] = probe_tool(executables[key], key, environment)
-            interface = " (classic Tcl interface)" if key == "hls" else ""
-            print(f"PASS {label} {TOOL_VERSION}{interface}", flush=True)
-        except (RuntimeError, OSError) as exc:
-            errors.append(str(exc))
+        rejected = []
+        found_candidate = False
+        for path, origin in candidates:
+            found_candidate = True
+            trial = {**executables, key: path}
+            scripts = installation_settings(trial)
+            # Reuse site-specific scripts only for the saved pair, not for a
+            # newly discovered installation on a different machine.
+            if reuse_saved_settings and all(saved.get("vitis_hls" if item == "hls" else item) == binary for item, binary in trial.items()):
+                scripts.extend(Path(item) for item in saved.get("settings_files", []) if Path(item) not in scripts)
+            scripts = list(dict.fromkeys([*scripts, *custom_settings]))
+            try:
+                loaded = load_amd_environment(scripts, os.environ.copy())
+                trial_environment = hardware_environment(trial, loaded)
+                version = probe_tool(path, key, trial_environment)
+            except (RuntimeError, OSError) as exc:
+                rejected.append(str(exc))
+                if strict:
+                    break
+                print(f"SKIP {label} candidate ({origin}): {exc}", flush=True)
+                continue
+            executables[key], versions[key] = path, version
+            final_settings, environment = scripts, trial_environment
+            print(f"FOUND {label} ({origin}): {path}", flush=True)
+            break
+        if key not in executables:
+            if found_candidate:
+                errors.append(
+                    f"{label}: installation candidates were found but none passed the {TOOL_VERSION} check.\n"
+                    + "\n".join(rejected)
+                )
+            else:
+                errors.append(
+                    f"{label} not discovered on PATH, in AMD variables, or in searched installation roots. "
+                    f"It may be installed elsewhere: use --tool-root with its installation base, or {option} "
+                    "with its executable. Software-only search/prepare/report do not need AMD tools."
+                )
     if errors:
         raise RuntimeError(
             "Hardware-tool precheck failed:\n- " + "\n- ".join(errors)
             + "\nSee hardware_validation/TOOLS.md for setup and troubleshooting."
         )
+    # Verify both executables in the final shared environment, not only during
+    # discovery under possibly different candidate settings.
+    for key, label in (("hls", "Vitis HLS"), ("vivado", "Vivado")):
+        versions[key] = probe_tool(executables[key], key, environment)
+        interface = " (classic Tcl interface)" if key == "hls" else ""
+        print(f"PASS {label} {TOOL_VERSION}{interface}", flush=True)
+    if save_config and config_path is not None:
+        payload = {
+            "schema_version": 1, "tool_version": TOOL_VERSION,
+            "vitis_hls": executables["hls"], "vivado": executables["vivado"],
+            "settings_files": list(map(str, final_settings)),
+        }
+        try:
+            if not config_path.is_file() or read_json(config_path) != payload:
+                write_json(config_path, payload)
+        except OSError as exc:
+            raise RuntimeError(
+                f"tools verified but configuration could not be saved to {config_path}; "
+                "choose a writable --tool-config or use --no-save-tools"
+            ) from exc
+        print(f"TOOL CONFIG: {config_path}", flush=True)
     print(
         "TOOL CHECK PASS: executable paths and versions verified; no synthesis started.\n"
         "Licenses and VCK190 device support are checked by AMD tools during the hardware run.",
         flush=True,
     )
-    return {"executables": executables, "versions": versions, "environment": environment}
+    return {"executables": executables, "versions": versions, "environment": environment, "settings_files": final_settings}
 
 
 def read_json(path: Path) -> dict:
@@ -739,20 +961,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stage", choices=("check-tools", "prepare", "run", "report", "all"), default="all")
     parser.add_argument("--jobs", type=int, default=2, help="maximum simultaneous hardware jobs")
     parser.add_argument(
-        "--vitis-hls", default=os.environ.get("VITIS_HLS", "vitis_hls"),
-        help="classic Vitis HLS 2024.2 command or full executable path (default: VITIS_HLS or PATH)",
+        "--vitis-hls", help="explicit classic Vitis HLS 2024.2 executable; otherwise discover automatically",
     )
     parser.add_argument(
-        "--vivado", default=os.environ.get("VIVADO", "vivado"),
-        help="Vivado 2024.2 command or full executable path (default: VIVADO or PATH)",
+        "--vivado", help="explicit Vivado 2024.2 executable; otherwise discover automatically",
     )
+    parser.add_argument("--tool-config", type=Path, default=DEFAULT_TOOL_CONFIG, help="readable local tool configuration")
+    parser.add_argument("--tool-root", type=Path, action="append", help="installation search root; repeat for multiple roots")
+    parser.add_argument("--settings", type=Path, action="append", help="trusted AMD/site settings script; repeat in loading order")
+    parser.add_argument("--no-save-tools", action="store_true", help="check/use tools without saving the local configuration")
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    tool_options = {
+        "config_path": args.tool_config, "search_roots": args.tool_root,
+        "settings_files": args.settings, "save_config": not args.no_save_tools,
+    }
     if args.stage == "check-tools":
         if args.design or args.results_dir or args.sources_dir:
             parser.error("check-tools does not use sources or search results; omit --design/--results-dir/--sources-dir")
-        check_tools(args.vitis_hls, args.vivado)
+        check_tools(args.vitis_hls, args.vivado, **tool_options)
         return 0
     output = args.output_dir.expanduser().resolve()
     if output == REPOSITORY or not output.name:
@@ -761,7 +989,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--results-dir is required for prepare/all")
     if args.stage in {"run", "report"} and (args.design or args.results_dir or args.sources_dir):
         parser.error("run/report use the existing plan; choose the subset with --stage prepare")
-    toolchain = check_tools(args.vitis_hls, args.vivado) if args.stage in {"run", "all"} else None
+    toolchain = check_tools(args.vitis_hls, args.vivado, **tool_options) if args.stage in {"run", "all"} else None
     if args.stage in {"prepare", "all"}:
         source_root = (
             args.sources_dir.expanduser().resolve()

@@ -39,25 +39,27 @@ diff -u \
 
 FIFO pragma changes are expected; `diff` returns status 1 when it finds them.
 `plan.json` records the jobs, and each work directory contains its exact
-configuration and generated Tcl scripts. File and directory names shown in
-documentation are for inspection, not commands to paste into a shell.
+configuration and generated Tcl scripts. Run the commands above to inspect
+these files; a directory listing itself is not a sequence of shell commands.
 Native and optimized projects use the readable directory names `native` and
 `sgrm`; integrity checks run automatically without entering checksum values.
 
 ## 2. Configure and check the hardware tools
 
-Configure classic Vitis HLS 2024.2 and Vivado 2024.2, the VCK190 part, and
-licenses using [Hardware tool setup](TOOLS.md). Use paths from your machine,
-not another workstation. Then check from the repository root:
+Install classic Vitis HLS 2024.2 and Vivado 2024.2, the VCK190 part, and
+licenses. From the repository root, run the precheck without manually sourcing
+the AMD settings:
 
 ```bash
 python hardware_validation/validate_hardware.py --stage check-tools
 ```
 
 Expect `PASS Vitis HLS 2024.2 (classic Tcl interface)`, `PASS Vivado 2024.2`,
-and `TOOL CHECK PASS`. This step does not start synthesis. If a tool is
-missing, a different release is selected, or `vitis_hls` forwards to
-`vitis-run`, use the setup guide to resolve the error before continuing.
+and `TOOL CHECK PASS`, together with the machine-local configuration path.
+The validator discovers compatible installations, loads settings privately,
+and saves tool paths for later commands. This step does not start synthesis.
+For a nonstandard installation, use `--tool-root` once; see
+[Hardware tool setup](TOOLS.md) if discovery or environment loading fails.
 
 ## 3. Run HLS and Vivado RTL synthesis
 
@@ -71,8 +73,9 @@ python hardware_validation/validate_hardware.py \
 This builds the six prepared jobs. Repeating the command safely reuses completed
 jobs whose fingerprints and report checksums match. The existing plan defines
 the subset; omit `--design` and `--results-dir` from `run` and `report` commands.
-If you selected executables with `--vitis-hls` and `--vivado` during the
-precheck, pass the same flags here; a precheck does not save tool selections.
+The saved executable paths and settings are reused automatically. Each run
+rechecks versions; licenses and installed device support are checked by the
+tools when hardware jobs start.
 
 ## 4. Collect and check the measurements
 
@@ -124,7 +127,7 @@ output directory and omit the three `--design` options. That builds 60 jobs.
 ## Time and full results
 
 Hardware synthesis is much more time-consuming than replaying the searches.
-On the author's workstation, a fresh native/selected `bicg` pair ran in
+On the tested workstation, a fresh native/selected `bicg` pair ran in
 approximately 40.5 minutes with two parallel jobs; `ResidualBlock` took
 approximately 3.5 minutes under the same two-job setting. Runtime varies by
 design and host; these are per-design measurements, not a prediction for the

@@ -23,66 +23,81 @@ the unified `vitis-run` interface. That interface uses different command-line
 options and is not a verified replacement for this workflow. A matching
 command name alone is not sufficient: use the classic 2024.2 installation.
 
-## 1. Load the environment on your machine
+## 1. Discover and check tools without synthesis
 
-In the same Bash terminal used for the Python workflow, find the
-`settings64.sh` files inside your own AMD installation. Their locations
-depend on the installation root; if needed, ask your system administrator.
-Do not copy paths from a different workstation.
-
-If both tools are already configured, skip to the precheck below. Otherwise,
-these commands ask for your paths instead of assuming an installation root:
-
-```bash
-read -r -p "Path to Vitis HLS 2024.2 settings64.sh: " SGRM_HLS_SETTINGS
-source "$SGRM_HLS_SETTINGS"
-
-read -r -p "Path to Vivado 2024.2 settings64.sh: " SGRM_VIVADO_SETTINGS
-source "$SGRM_VIVADO_SETTINGS"
-
-hash -r
-```
-
-Enter the full path to an existing `settings64.sh` file at each prompt,
-without adding shell quotes to the entered text. Some installations load
-both tools from one settings file; sourcing the matching Vivado settings
-explicitly also avoids leaving a different release active on `PATH`.
-Re-run these steps when opening a new terminal if your site does not load
-the tool environment automatically.
-
-Confirm that the search environment still imports this checkout:
-
-```bash
-python -c "import sgrm; print(sgrm.__file__)"
-```
-
-## 2. Check paths and versions without synthesis
-
-Run from the repository root:
+Keep the SGRM Python environment activated and run from the repository root.
+You do not need to source AMD settings manually first:
 
 ```bash
 python hardware_validation/validate_hardware.py --stage check-tools
 ```
 
-Expected output includes the actual executable paths, followed by:
+For each tool, the validator checks these sources in order:
+
+1. Explicit `--vitis-hls` / `--vivado` arguments, or `VITIS_HLS` / `VIVADO`
+   executable-path overrides. An invalid override fails rather than silently
+   selecting another installation.
+2. Previously validated paths in the machine-local `.sgrm-tools.json`.
+3. AMD installation variables: `XILINX_HLS`, `XILINX_VITIS`, and `XILINX_VIVADO`.
+4. Executables on `PATH`.
+5. Bounded installation-directory searches under `Xilinx*` and `AMD*` roots
+   in `/opt`, `/tools`, `/usr/local`, and the user's home directory.
+
+Both product-first and version-first layouts are supported. Automatic
+discovery tries candidates in this order, skips failed or incompatible ones,
+and selects the first verified classic 2024.2 installation. Directory names
+alone never establish a tool's version. Use explicit paths when a particular
+installation is required. Discovery does not scan the entire filesystem.
+
+Expected output includes the actual executable paths and:
 
 ```text
 PASS Vitis HLS 2024.2 (classic Tcl interface)
 PASS Vivado 2024.2
+TOOL CONFIG: <your repository>/.sgrm-tools.json
 TOOL CHECK PASS: executable paths and versions verified; no synthesis started.
 ```
 
+The validator loads the selected installations' `settings64.sh` files in a
+private Bash child process. It then selects the checked tool roots and places
+the HLS and Vivado executable directories first on that child's `PATH`, so HLS
+export uses the checked Vivado. Your interactive terminal and Conda environment
+are not changed.
+
 The command needs no search result or hardware plan. It performs version
 queries in temporary directories, cleans any version-query logs, and does not
-create synthesis projects or change your shell environment. A failed query,
-an unrecognized version banner, or a release other than 2024.2 is an error.
+create synthesis projects. Every invocation checks versions again, including
+when paths come from saved configuration. A failed query, an unrecognized
+version banner, or a release other than 2024.2 is not accepted.
 License availability and installed VCK190 device support are verified by
 the AMD tools during the actual hardware run, not by this version-only check.
 
-## 3. Select explicit executables when needed
+## 2. Point to a nonstandard installation
+
+If your tools are installed outside the discovered locations, provide the
+installation directory once:
+
+```bash
+read -r -p "AMD installation directory: " SGRM_AMD_ROOT
+
+python hardware_validation/validate_hardware.py \
+  --stage check-tools \
+  --tool-root "$SGRM_AMD_ROOT"
+```
+
+Enter a full path without adding shell quotes to the prompted text. The root
+can be a shared installation directory, a product directory, or a release
+directory. Repeat `--tool-root` for separate HLS and Vivado locations. Supplied
+roots replace the common-directory fallback; higher-priority configuration,
+environment variables, and `PATH` are still considered first.
+
+Once the check succeeds, future commands reuse the saved executable paths and
+settings, even in a new terminal. You do not need to repeat `--tool-root`.
+
+## 3. Select executables or site settings explicitly
 
 When several AMD releases are installed, avoid relying on their order on
-`PATH`. After loading the matching settings, enter full paths to the actual
+`PATH`. Enter full paths to the actual
 classic HLS and Vivado executables, not their directories or shell aliases:
 
 ```bash
@@ -95,43 +110,74 @@ python hardware_validation/validate_hardware.py \
   --vivado "$SGRM_VIVADO_BIN"
 ```
 
-Quote these variables in commands, including when installation paths contain
-spaces. For standard AMD installations, the validator selects the matching
-installation roots and places both executable directories on the child
-process's `PATH`. This ensures that the HLS export uses the selected Vivado
-installation, not only that a separate Vivado version query passes. Site
-wrapper scripts must also preserve the configured AMD environment.
+Quote variables in commands, including when installation paths contain spaces.
+You do not need to load the installation settings manually. To add a trusted
+site script, for example for host libraries or license setup, use:
 
-A precheck does not save executable selections. Repeat the same flags when
-running a prepared plan:
+```bash
+read -r -p "Path to trusted site settings script: " SGRM_SITE_SETTINGS
+
+python hardware_validation/validate_hardware.py \
+  --stage check-tools \
+  --vitis-hls "$SGRM_HLS_BIN" \
+  --vivado "$SGRM_VIVADO_BIN" \
+  --settings "$SGRM_SITE_SETTINGS"
+```
+
+Repeat `--settings` for multiple scripts. Loading order is the detected HLS
+settings, detected Vivado settings, and then your site scripts. Tool root and
+executable-directory selection is applied after settings loading. Site wrapper
+scripts must preserve this selected environment. Settings scripts are executable
+code; load only trusted files. See [Security](../SECURITY.md).
+
+## 4. Reuse the validated configuration
+
+Successful checks save `.sgrm-tools.json` with the executable paths, settings
+paths, schema, and required version. The file contains no environment dump,
+license values, or credentials, and is ignored by Git. The default location
+is the repository root regardless of the current working directory.
+
+On another machine, run the precheck there rather than copying this file.
+Stale or incompatible cached executables trigger rediscovery. Site settings
+are reused when the saved tool pair is selected; missing saved settings produce
+an actionable error. Malformed configuration is not silently overwritten.
+
+Use `--tool-config /a/writable/path/tools.json` for a different configuration
+file. Repeat that option in subsequent commands to reuse it. Use
+`--no-save-tools` to suppress configuration writes; an existing configuration
+is still read and checked.
+
+After preparing a plan and passing the precheck, run without repeating tool
+paths or settings:
 
 ```bash
 python hardware_validation/validate_hardware.py \
   --output-dir results/three-design-hardware \
   --stage run \
-  --jobs 2 \
-  --vitis-hls "$SGRM_HLS_BIN" \
-  --vivado "$SGRM_VIVADO_BIN"
+  --jobs 2
 ```
 
 This last command **does start synthesis**; run it only after preparing the
 plan and passing the precheck. If you are checking the software workflow only,
 stop after `--stage prepare` and `--stage check-tools`.
 
-For automation, `VITIS_HLS` and `VIVADO` may contain executable paths. The
-selection order is explicit command-line flags, these environment variables,
-then `vitis_hls`/`vivado` on `PATH`. Neither variable replaces installation,
-license configuration, or required host libraries.
+Every `run` or `all` invocation rechecks the tools and reloads their private
+environment. Saved configuration does not replace installation, licensing,
+required host libraries, or device support.
 
 ## Troubleshooting
 
 | Message | Action |
 |---|---|
-| `Vivado executable not found` | Load your Vivado 2024.2 settings, or provide its full executable path with `--vivado`. Installing only HLS is not enough for hardware resources. |
-| `Vitis HLS executable not found` | Load your classic HLS 2024.2 settings, or select its full executable path with `--vitis-hls`. |
-| `vitis-run` / unrecognized `-version` | The selected HLS command is using the unified CLI. Select classic HLS 2024.2; changing only the version flag does not make the Tcl export workflow compatible. |
-| `found 2025.1` (or another release) | Select matching 2024.2 tools. Do not mix releases or use newer tools to check the 2024.2 reference measurements. |
-| Version check exits nonzero or times out | Inspect the reported path/output, host-library requirements, and AMD installation setup. A version string in failed output is not a successful precheck. |
+| Tool `not discovered` | It may be installed outside the searched locations. Supply `--tool-root` or its full executable path. This message does not assert that the tool is uninstalled. |
+| `installation candidates were found, but none passed` | Inspect the candidate paths and stated version/environment failures. Select a compatible installation or correct its setup. |
+| `vitis-run` / unrecognized `-version` | The candidate uses the unified CLI. Automatic discovery tries other candidates; an explicit override requires correction. Select classic HLS 2024.2, not just a different version flag. |
+| `found 2025.1` (or another release) | Select matching 2024.2 tools. Do not mix releases for the 2024.2 reference measurements. |
+| `AMD environment setup failed` | Check the named trusted settings scripts and their host requirements; use `--settings` for required site setup. The full environment is not printed. |
+| Settings script is missing | Update the cached settings paths, select the intended installation, or supply a replacement trusted script. |
+| Cannot read or unsupported tool configuration | Repair the indicated file or use a new `--tool-config` path; unrelated JSON is not overwritten. |
+| Cannot save validated tool configuration | Choose a writable `--tool-config` path, or use `--no-save-tools`. |
+| Version check exits nonzero or times out | Inspect the reported path/output, host-library requirements, and installation setup. A version string in failed output is not a successful check. |
 | License/device error during synthesis | Check licenses and VCK190 device support in your local installation. A version precheck cannot validate those requirements. |
 
 Existing plans and finished reports remain usable with `--stage run` and

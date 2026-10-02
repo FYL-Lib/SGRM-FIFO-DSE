@@ -16,6 +16,24 @@ A checksum protects integrity relative to the trusted manifest; it does not
 make an unknown pickle safe. Run third-party traces in a suitably isolated
 environment.
 
+## Hardware settings trust boundary
+
+AMD `settings64.sh` files and optional `--settings` scripts are executable
+shell code. Use only trusted installation or site scripts. They are loaded in
+a private child process, not in your interactive terminal, but still run with
+your user account's privileges.
+
+The machine-local `.sgrm-tools.json` records executable and settings-file paths,
+the schema, and the required tool version. It is ignored by Git. Review a tool
+configuration received from another party before using it: referenced scripts
+may execute code. Do not add credentials to this file or commit machine-local
+configuration.
+
+The loaded environment is passed only to hardware-tool subprocesses. The
+validator does not persist or print the full environment or license values.
+Version checks do not establish license availability or device support;
+those are checked by AMD tools during hardware execution.
+
 ## Reporting a vulnerability
 
 Open a private security advisory in the GitHub repository rather than posting
