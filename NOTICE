@@ -6,3 +6,9 @@ the full license text.
 
 LightningSim is an external runtime dependency and remains subject to its
 upstream license terms.
+
+The optional Stream-HLS benchmark source bundle contains code and workload
+inputs from https://github.com/UCLA-VAST/Stream-HLS. The upstream MIT license
+is preserved as STREAM_HLS_LICENSE inside that bundle. These third-party
+benchmark files remain subject to that license; the SGRM license does not
+replace it. AMD tool binaries and vendor headers are not redistributed.

@@ -2,122 +2,239 @@
 
 **Sensitivity-Guided Resource Minimization for FIFO Design-Space Exploration in HLS Dataflow Designs**
 
-SGRM jointly selects FIFO depth and storage implementation while enforcing a hard latency constraint:
+SGRM jointly optimizes FIFO depth and storage implementation while enforcing
+deadlock freedom and a hard latency constraint on the evaluated execution trace:
 
 ```text
 latency <= baseline_latency * (1 + epsilon)
 ```
 
-The reference configuration uses `epsilon = 0`. Candidate latency and deadlock behavior are evaluated by replaying a pre-generated LightningSim trace; FIFO BRAM, URAM, FF, and LUT costs are computed by the included analytical model.
+The reference configuration uses `epsilon = 0`. Searches replay pre-generated
+LightningSim traces and use the analytical FIFO resource model to guide the
+four-stage optimizer. The optional hardware workflow applies the selected
+configurations to the original C++ designs and measures their FIFO-subsystem
+resources with Vitis HLS and Vivado.
 
-## Quick start
+## Install
 
-The tested search-replay environment is Linux x86-64, Python 3.12, LightningSim 0.2.6, and llvmlite 0.43. Conda installs the pinned runtime:
+Run commands from the repository root in a Linux x86-64 terminal with Conda
+available. The local prefix avoids changing an existing named environment.
 
 ```bash
-conda env create --file environment.yml
-conda activate sgrm
+conda env create --prefix ./.conda-sgrm --file environment.yml
+conda activate ./.conda-sgrm
 python -m pip install -e '.[dev]'
-pytest
+python -m pytest
 ```
 
-Run and verify the included `bicg` trace:
+The pinned environment uses Python 3.12, LightningSim 0.2.6, and llvmlite 0.43.
+Confirm that Python imports this checkout:
 
 ```bash
-sgrm-trace-batch \
-  --manifest examples/traces/manifest.json \
-  --output-dir results/bicg
-
-sgrm-verify-results \
-  --manifest examples/traces/manifest.json \
-  --results-dir results/bicg
+python -c "import sgrm; print(sgrm.__file__)"
 ```
 
-Expected final line:
+If you already installed the search environment, you can reuse it and start
+with the archive checks below.
 
-```text
-PASS bicg
-```
+## Reproduce the 30 trace searches
 
-The reference run evaluates 11 distinct points. Evaluation 1 is the baseline; the selected solution first appears at evaluation 3 and changes latency from 835 to 834 cycles while changing modeled FIFO resources from `(BRAM, URAM, FF, LUT) = (0, 0, 572, 2883)` to `(0, 0, 572, 2508)`.
-
-## Reproduce all 30 trace searches
-
-The repository is self-contained: the versioned Stream-HLS trace bundle is
-tracked at
-[`datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz`](datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz).
-Download the repository and run the following commands from its root.
-
-Verify the archive before extracting it:
+Verify both supplied archives before extracting or replaying traces:
 
 ```bash
 sha256sum --check datasets/SHA256SUMS
 ```
 
-The expected output is:
-
-```text
-datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz: OK
-```
-
-The recorded SHA-256 is `b25327f6a5085cec9305cc9fb3116072df31778efb0ce80fe1ba0ac238df491c`.
-
-Extract the archive, run the reference search on all 30 designs, and verify the generated JSON results:
+Both the trace archive and the source archive must report `OK`. Then run:
 
 ```bash
 tar -xJf datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz
 
 sgrm-trace-batch \
   --manifest sgrm-stream-hls-30-traces-v0.1.0/manifest.json \
-  --output-dir results/stream-hls-30
+  --output-dir results/stream-hls-30 \
+  --budget 1000 \
+  --seed 1 \
+  --epsilon 0
 
 sgrm-verify-results \
   --manifest sgrm-stream-hls-30-traces-v0.1.0/manifest.json \
   --results-dir results/stream-hls-30
 ```
 
-A successful batch prints 30 `PASS` lines, and the verifier prints another 30 `PASS` lines with no `FAIL`. Per-design results are written to `results/stream-hls-30/<design>.json`; the batch summary is `results/stream-hls-30/index.json`.
+Each command should print 30 `PASS` lines with no `FAIL`. The sequential
+search batch took approximately 127 seconds on the tested workstation; runtime
+on other hosts can differ. These steps do not invoke AMD tools.
 
-See [Reproducing the trace searches](REPRODUCING.md) for the direct single-design command, exact environment details, result-field definitions, timeout controls, and manifest construction.
+Each `results/stream-hls-30/<design>.json` records the selected FIFO depths,
+explicit storage implementations, trace latency, modeled resources, and
+provenance. `index.json` records the batch status. The resource estimates in
+the search JSON are distinct from the post-synthesis measurements below.
 
-## Trace security
+See [Reproducing the trace searches](REPRODUCING.md) for the small included
+`bicg` example, exact environment details, and result-field definitions.
 
-LightningSim traces are Python pickle files. Only load trace bundles from a
-trusted source and verify the manifest SHA-256 values before replay. See
-[Security](SECURITY.md) for the trust boundary.
+## Reproduce post-synthesis resources
 
-## Highlights
+The source archive contains all 30 original Stream-HLS C++ designs,
+testbenches, workload inputs, and source/trace mappings. Start with three
+representative designs: `bicg`, `gemm`, and `ResidualBlock`. They cover
+LUT/SRL-, BRAM-, and URAM-backed FIFO configurations.
 
-- Joint FIFO depth and storage-implementation optimization
-- Four concrete storage choices: SRL, LUTRAM, BRAM, and URAM
-- Hard deadlock and latency feasibility checks
-- Grouped decision variables for structurally equivalent channels
-- Sensitivity-guided four-stage search with bounded evaluation budgets
-- Capacity-normalized BRAM/URAM/FF/LUT objective
-- Manifest-driven batch execution with trace checksums
-- Machine-readable result verification
-- Backend-neutral core with a pre-generated-trace integration
+### 1. Prepare the original and selected source copies
 
-## Repository layout
+After the searches, run:
+
+```bash
+python hardware_validation/validate_hardware.py \
+  --results-dir results/stream-hls-30 \
+  --output-dir results/three-design-hardware \
+  --design bicg \
+  --design gemm \
+  --design ResidualBlock \
+  --stage prepare
+```
+
+Expected output begins with `PREPARED 3 paired designs (6 hardware jobs)`.
+This step automatically verifies/extracts the source bundle and generates an
+unchanged native copy and an SGRM-selected copy for each design. It does not
+start synthesis or modify the archived originals.
+
+The selected copies use your own search JSON, not a preselected configuration.
+Every selected FIFO receives its requested depth and an explicit
+`bind_storage type=fifo impl=...` directive, including SRL.
+
+Inspect the generated files with actual shell commands:
+
+```bash
+ls -l results/three-design-hardware/
+
+diff -u \
+  results/three-design-hardware/work/bicg/native/src/bicg.cpp \
+  results/three-design-hardware/work/bicg/sgrm-*/src/bicg.cpp
+```
+
+Changes to FIFO pragmas are expected. `diff` returns status 1 when it finds
+differences. Each work directory also contains `configuration.json`,
+`run_hls.tcl`, and `run_vivado.tcl`; `plan.json` records all six jobs.
+Do not edit staged files after preparation: their checksums are verified.
+
+### 2. Configure the hardware tools
+
+Install and configure **Vitis HLS 2024.2** and **Vivado 2024.2**, including
+the VCK190 part `xcvc1902-vsva2197-2MP-e-S` and the required licenses.
+Load the installation's `settings64.sh` files as appropriate for your host,
+then check:
+
+```bash
+vitis_hls -version
+vivado -version
+python -c "import sgrm; print(sgrm.__file__)"
+```
+
+Both AMD tools must report 2024.2, and Python should still import this
+checkout. Tool binaries, licenses, and vendor headers are not included.
+No physical board is required. Both configurations target VCK190 at 10 ns.
+
+### 3. Run the six hardware jobs
+
+```bash
+python hardware_validation/validate_hardware.py \
+  --output-dir results/three-design-hardware \
+  --stage run \
+  --jobs 2
+```
+
+This runs HLS RTL generation followed by Vivado RTL synthesis, with at most
+two simultaneous hardware jobs. Placement/routing is not needed for these
+post-synthesis resource measurements. The workflow does not run RTL
+co-simulation.
+
+The native/selected `bicg` pair took approximately 40.5 minutes with two
+parallel jobs on the tested workstation; `ResidualBlock` took approximately
+3.5 minutes. These are per-design observations, not a promised six-job total.
+
+Logs, exact sources, scripts, and raw reports are retained in each work
+directory. Repeat the run command to resume: successful jobs are reused only
+when their input fingerprints and report checksums still match. The
+`run` and `report` stages use the existing plan; do not repeat
+`--design` or `--results-dir` for those stages.
+
+### 4. Collect results and check the reference measurements
+
+```bash
+python hardware_validation/validate_hardware.py \
+  --output-dir results/three-design-hardware \
+  --stage report
+
+python hardware_validation/check_reference.py \
+  --output-dir results/three-design-hardware
+```
+
+Neither command starts synthesis. The outputs are:
+
+- `hardware_resources.csv`: measured FIFO-subsystem resources for all six jobs.
+- `paired_comparison.csv`: native/selected normalized costs and reductions.
+- `summary.json`: completion status, coverage, and the subset geometric mean.
+
+A complete run reports `PASS`, three completed pairs, and six successful
+hardware jobs. The reference checker compares all four resource counts,
+FIFO counts, costs, and reductions against
+[three_design_reference.json](hardware_validation/three_design_reference.json).
+
+Expected checker output (for comparison only, not shell commands):
 
 ```text
-.
-+-- src/sgrm/
-|   +-- sgrm.py                  four-stage optimization algorithm
-|   +-- resource_model.py        analytical FIFO resource model
-|   +-- interfaces.py            evaluator and FIFO data contracts
-|   +-- lightningsim_backend.py  pre-generated trace adapter
-|   +-- cli.py                   single-trace command
-|   +-- batch_cli.py             manifest-driven batch command
-|   +-- verify_cli.py            result verifier
-|   +-- build_manifest_cli.py    trace-manifest builder
-+-- examples/traces/             versioned bicg trace and manifest
-+-- datasets/                    fixed corpus lists, trace archive, and checksum
-+-- tests/                       unit and trace-replay regression tests
-+-- docs/                        algorithm and integration documentation
-+-- environment.yml              pinned search-replay environment
-+-- REPRODUCING.md               complete runnable instructions
+PASS bicg: measured FIFO-subsystem reduction 21.4772%
+PASS gemm: measured FIFO-subsystem reduction 97.0465%
+PASS ResidualBlock: measured FIFO-subsystem reduction 98.2470%
+REFERENCE MATCH: 3 paired designs
 ```
+
+These correspond to the paper's per-design resource reductions of 21.5%,
+97.0%, and 98.2%. They cover the FIFO subsystem, including storage and
+synthesized control logic, rather than whole-design resource totals. The
+three-design aggregate is not the paper's 30-design geometric mean. The
+HLS schedule estimate in the CSV is not an RTL co-simulation cycle count.
+
+For the complete 30-design measurement, use a new output directory and omit
+the three `--design` options when preparing the plan. That creates 60 jobs.
+See [Hardware validation](hardware_validation/README.md) for the full protocol
+and [Three-design walkthrough](hardware_validation/QUICKSTART.md) for the
+raw resource reference table.
+
+## Storage requirements
+
+Allow approximately 1.5 GiB for the search environment, extracted traces, and
+search results. The source archive is approximately 28 MiB compressed.
+AMD installation and generated synthesis projects require additional space.
+Retained projects for all 60 hardware jobs occupied approximately 10.8 GiB
+on the tested workstation, excluding the tools and transient files; reserve
+several tens of GiB for generated projects. A 4 TB SSD is not a minimum
+requirement.
+
+## Algorithm and resource objective
+
+SGRM groups structurally equivalent channels and searches concrete `srl`,
+`lutram`, `bram`, and `uram` implementations in four stages:
+
+| Stage | Role |
+|---|---|
+| Profile & Seed | Measure sensitivity and construct feasible seeds |
+| Guided Shrink | Apply prioritized depth and implementation moves |
+| Coordinated Moves | Explore interacting groups and a reduced exact core |
+| Final Halve & Flip | Refine depths and implementation choices |
+
+The normalized VCK190 resource objective is:
+
+```text
+Cutil = (BRAM/967 + URAM/463 + FF/1,799,680 + LUT/899,840) / 4
+reduction (%) = 100 * (1 - Cutil_selected / Cutil_native)
+```
+
+BRAM measurements use 36-Kbit tile equivalents: `RAMB36 + RAMB18/2`.
+Corpus resource reduction is computed from the geometric mean of per-design
+selected/native cost ratios.
 
 ## Core API
 
@@ -134,56 +251,15 @@ evaluated_points = optimizer.solve()
 best = optimizer.get_best_feasible()
 ```
 
-`backend` implements the `EvaluationBackend` protocol in `src/sgrm/interfaces.py`. The included `LightningSimTraceBackend` is one concrete integration; other evaluators can implement the same protocol.
-
-## Search state and stages
-
-Channels with the same display name share one decision variable:
-
-```text
-(depth_lattice_index, implementation_type)
-```
-
-The implementation search uses `srl`, `lutram`, `bram`, and `uram`. The reference four-stage budget split is:
-
-| Stage | Budget | Purpose |
-|---|---:|---|
-| Profile & Seed | 15% | Measure sensitivity and generate feasible seeds |
-| Guided Shrink | 50% | Apply guided one-step, halved, and minimum-depth moves |
-| Coordinated Moves | 25% | Explore interacting groups and a reduced exact core |
-| Final Halve & Flip | 10% | Refine individual depths and implementation choices |
-
-Unused evaluations roll forward. `get_best_feasible()` returns the lowest-cost evaluated point satisfying the original latency and deadlock constraints.
-
-## Resource objective
-
-The VCK190-normalized objective used by the reference search is:
-
-```text
-Cutil = (BRAM/967 + URAM/463 + FF/1,799,680 + LUT/899,840) / 4
-```
-
-The JSON output reports both `cutil_reduction_pct` and `raw_resource_reduction_pct`. The latter is based on the unweighted sum `BRAM + URAM + FF + LUT`; it is included to make the two quantities explicit rather than interchangeable.
-
-## Reference configuration
-
-The command-line tools apply these controls:
-
-```text
-SGRM_COST_MODE=util
-SGRM_IMPL_TYPE_MOVES=1
-SGRM_DEPTH_BASED_IMPL=1
-SGRM_START_FROM_SMALL=1
-SGRM_DEPTH_HALVE_NEIGHBOR=1
-SGRM_STAGE5_HALVE_REFINE=1
-SGRM_STAGES=1,2,3,4
-```
-
-`SGRM_STAGE5_HALVE_REFINE` is the backward-compatible internal name for the refinement orchestrated as public Stage 4.
+`backend` implements the `EvaluationBackend` protocol in
+[src/sgrm/interfaces.py](src/sgrm/interfaces.py). The included trace adapter is
+one integration; other evaluators can implement the same protocol.
 
 ## Documentation
 
-- [Reproducing the trace searches](REPRODUCING.md)
+- [Trace searches](REPRODUCING.md)
+- [Hardware validation](hardware_validation/README.md)
+- [Three-design walkthrough](hardware_validation/QUICKSTART.md)
 - [Algorithm](docs/algorithm.md)
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
@@ -194,7 +270,11 @@ SGRM_STAGES=1,2,3,4
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
+Traces are serialized Python pickle files. Load only trusted bundles after
+verifying their checksums; see [Security](SECURITY.md).
+
 ## License
 
-SGRM is licensed under the [Apache License 2.0](LICENSE). Attribution and
-external-runtime information are recorded in [NOTICE](NOTICE).
+SGRM is licensed under [Apache License 2.0](LICENSE). Upstream Stream-HLS
+benchmark sources retain their MIT license, included in the source bundle.
+External-runtime information and attribution are recorded in [NOTICE](NOTICE).

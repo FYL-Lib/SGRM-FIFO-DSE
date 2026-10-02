@@ -2,6 +2,16 @@
 
 All notable changes to the SGRM core package are documented here.
 
+## Unreleased
+
+- Added the original 30 Stream-HLS sources, testbenches, and workload inputs as
+  an independently checksummed optional bundle with upstream license attribution.
+- Added exact FIFO depth/implementation rewriting from trace-search JSON results.
+- Added paired native/SGRM HLS and Vivado RTL-synthesis orchestration, resumable
+  jobs, hierarchical FIFO-subsystem measurement, and geometric-mean reporting.
+- Added a staged three-design walkthrough, post-synthesis reference checks,
+  and endpoint-verifier regression tests.
+
 ## 0.1.0
 
 - Published the four-stage SGRM optimization core.

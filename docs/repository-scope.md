@@ -15,13 +15,15 @@ optional integration for replaying pre-generated LightningSim traces.
 - Pre-generated LightningSim trace adapter
 - Manifest-driven trace runner and result verifier
 - Unit tests for core formulas and invariants
+- Optional versioned sources, testbenches, and workload inputs for 30 Stream-HLS designs
+- Paired native/SGRM hardware-validation script and post-synthesis reporting
 
 ## Maintained as integrations
 
 The following components are deliberately decoupled from the core package:
 
 - candidate-evaluation backends other than the included trace adapter;
-- benchmark sources and workload inputs;
+- additional benchmark corpora and workload inputs;
 - generated synthesis projects and reports;
 - experiment orchestration and plotting pipelines; and
 - baseline optimizer implementations.

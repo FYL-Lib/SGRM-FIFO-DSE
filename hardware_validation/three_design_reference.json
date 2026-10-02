@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "reference_set": "stream-hls-three-designs",
+  "evidence": "recorded Vivado 2024.2 RTL-synthesis hierarchical reports",
+  "resource_scope": "FIFO subsystem",
+  "part": "xcvc1902-vsva2197-2MP-e-S",
+  "clock_period_ns": 10.0,
+  "bram_unit": "36-Kbit tiles (RAMB36 + RAMB18/2)",
+  "capacities": {"bram": 967, "uram": 463, "ff": 1799680, "lut": 899840},
+  "designs": [
+    {
+      "design": "bicg",
+      "fifo_count": 44,
+      "native": {"bram": 0.0, "uram": 0, "ff": 754, "lut": 2412, "cutil": 0.0007748599751066856},
+      "sgrm": {"bram": 0.0, "uram": 0, "ff": 494, "lut": 1943, "cutil": 0.0006084415007112376},
+      "fifo_subsystem_reduction_pct": 21.477231982789526
+    },
+    {
+      "design": "gemm",
+      "fifo_count": 44,
+      "native": {"bram": 88.0, "uram": 0, "ff": 2156, "lut": 2594, "cutil": 0.023770956960198646},
+      "sgrm": {"bram": 0.0, "uram": 0, "ff": 3080, "lut": 987, "cutil": 0.0007020692567567567},
+      "fifo_subsystem_reduction_pct": 97.04652506025619
+    },
+    {
+      "design": "ResidualBlock",
+      "fifo_count": 20,
+      "native": {"bram": 0.0, "uram": 32, "ff": 1172, "lut": 1283, "cutil": 0.017797876689957266},
+      "sgrm": {"bram": 0.0, "uram": 0, "ff": 944, "lut": 651, "cutil": 0.00031199991109530584},
+      "fifo_subsystem_reduction_pct": 98.2469823983478
+    }
+  ]
+}

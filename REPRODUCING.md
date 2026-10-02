@@ -21,13 +21,17 @@ Allow approximately 1.5 GiB of free disk space for the environment, extracted 30
 From the repository root:
 
 ```bash
-conda env create --file environment.yml
-conda activate sgrm
+conda env create --prefix ./.conda-sgrm --file environment.yml
+conda activate ./.conda-sgrm
 python -m pip install -e '.[dev]'
 pytest
 ```
 
-The environment file pins the versions used to serialize and replay the supplied trace objects. If an older local Conda package cache has been modified, create the environment with a clean package cache before diagnosing the repository itself.
+The local prefix keeps this installation separate from existing named
+environments. The environment file pins the versions used to serialize and
+replay the supplied trace objects. If an older local Conda package cache has
+been modified, create the environment with a clean package cache before
+diagnosing the repository itself.
 
 ## Included bicg trace
 
@@ -87,6 +91,7 @@ The checksum command must print:
 
 ```text
 datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz: OK
+datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz: OK
 ```
 
 Run and verify all 30 designs:
@@ -123,6 +128,19 @@ adjust it for the host system.
 
 Platform strings, output paths, timestamps, and wall times are recorded for provenance but are not required to match.
 
+## Optional post-synthesis resource validation
+
+The search JSON records analytical resource estimates and concrete FIFO choices.
+Actual synthesized resources are obtained by applying those choices to the
+original C++ designs and synthesizing the resulting RTL. The separate
+[hardware-validation workflow](hardware_validation/README.md) supplies all 30
+native sources and builds 30 native/SGRM pairs with AMD 2024.2 tools. It reports
+FIFO-subsystem measurements separately from the search-model estimates.
+
+The approximately 1.5 GiB disk allowance above covers trace searches only.
+Hardware-tool installation and generated synthesis projects require additional
+storage and are not prerequisites for replaying or verifying the searches.
+
 ## Building a manifest for another trace bundle
 
 The manifest builder expects this archival layout:
@@ -136,10 +154,11 @@ The manifest builder expects this archival layout:
         trace.pkl
 ```
 
-Then run:
+For a separately prepared corpus, replace `./my-trace-bundle` below with its
+actual directory, then run:
 
 ```bash
-sgrm-build-manifest --trace-root <trace-root>
+sgrm-build-manifest --trace-root ./my-trace-bundle
 ```
 
 The included `bicg` fixture uses a deliberately compact layout and ships with
@@ -150,7 +169,7 @@ An optional newline-delimited corpus file can fix membership and ordering:
 
 ```bash
 sgrm-build-manifest \
-  --trace-root <trace-root> \
+  --trace-root ./my-trace-bundle \
   --design-list datasets/stream_hls_30.txt
 ```
 

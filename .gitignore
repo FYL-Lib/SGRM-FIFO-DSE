@@ -9,6 +9,8 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.conda-sgrm/
+.conda-sgrm-clean/
 venv/
 build/
 dist/
@@ -36,6 +38,9 @@ coverage.xml
 *.pem
 *.key
 *.crt
+results/
+sgrm-stream-hls-30-traces-v*/
+sgrm-stream-hls-30-sources-v*/
 
 # One tiny, pre-generated trace is intentionally versioned as a real example.
 !examples/traces/
