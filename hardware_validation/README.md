@@ -191,6 +191,6 @@ or differing choices for elements represented by a single source declaration;
 it never collapses differing choices by silently taking the maximum depth.
 
 The bundle preserves the original Stream-HLS MIT license as
-`STREAM_HLS_LICENSE` and provides `PROVENANCE.txt` and per-file SHA-256 hashes.
+`STREAM_HLS_LICENSE` and provides `PROVENANCE.txt` and per-file integrity records.
 See [NOTICE](../NOTICE). The original HLS scripts are included for inspection;
 generated run scripts apply the common validation protocol described above.

@@ -51,7 +51,7 @@ def load_manifest(path: str | Path) -> tuple[Path, dict]:
 
         digest = entry.get("trace_sha256")
         if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
-            raise ManifestError(f"{label}.trace_sha256 must be 64 hexadecimal digits")
+            raise ManifestError(f"{label}: trace integrity record is missing or invalid")
         expected = entry.get("expected")
         if expected is not None and not isinstance(expected, dict):
             raise ManifestError(f"{label}.expected must be an object")

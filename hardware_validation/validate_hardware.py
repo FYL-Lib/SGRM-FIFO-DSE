@@ -82,13 +82,13 @@ def extract_source_archive(destination: Path) -> Path:
     if not archive_path.is_file():
         raise FileNotFoundError(f"source archive not found: {archive_path}")
     entries = {}
-    for line in (REPOSITORY / "datasets/SHA256SUMS").read_text().splitlines():
+    for line in (REPOSITORY / "datasets/bundle_checksums.txt").read_text().splitlines():
         if line.strip() and not line.lstrip().startswith("#"):
             digest, name = line.split(maxsplit=1)
             entries[name.lstrip("*")] = digest
     expected = entries.get("datasets/" + SOURCE_ARCHIVE)
     if expected is None or sha256(archive_path) != expected:
-        raise ValueError("source archive checksum does not match datasets/SHA256SUMS")
+        raise ValueError("source archive failed its integrity check; restore the supplied source bundle")
     root = destination / SOURCE_ARCHIVE.removesuffix(".tar.xz")
     if root.is_dir():
         return root

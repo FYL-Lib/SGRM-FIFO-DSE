@@ -60,7 +60,7 @@ def _result_payload(result) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run canonical SGRM search from a pre-generated LightningSim trace.",
+        description="Run canonical SGRM search from a supplied execution trace.",
     )
     parser.add_argument(
         "--solution-dir",
@@ -74,8 +74,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epsilon", type=float, default=0.0)
     parser.add_argument("--output", type=Path, help="write result JSON to this path")
     parser.add_argument(
-        "--expected-trace-sha256",
+        "--expected-trace-checksum",
+        dest="expected_trace_sha256",
+        metavar="CHECKSUM",
         help="reference checksum; supplied automatically by sgrm-trace-batch",
+    )
+    # Keep the previous option working without exposing it in normal help.
+    parser.add_argument(
+        "--expected-trace-sha256",
+        dest="expected_trace_sha256",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--verbose", action="store_true")
     return parser

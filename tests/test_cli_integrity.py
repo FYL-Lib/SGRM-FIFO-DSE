@@ -5,7 +5,8 @@ import pytest
 from sgrm import cli
 
 
-def test_integrity_error_is_readable_and_precedes_trace_loading(tmp_path, monkeypatch):
+@pytest.mark.parametrize("option", ["--expected-trace-checksum", "--expected-trace-sha256"])
+def test_integrity_error_is_readable_and_precedes_trace_loading(tmp_path, monkeypatch, option):
     solution_dir = tmp_path / "solution1"
     solution_dir.mkdir()
     trace_path = solution_dir / "trace.pkl"
@@ -20,9 +21,24 @@ def test_integrity_error_is_readable_and_precedes_trace_loading(tmp_path, monkey
     with pytest.raises(SystemExit, match="trace integrity check failed") as exc:
         cli.main([
             "--solution-dir", str(solution_dir),
-            "--expected-trace-sha256", expected,
+            option, expected,
         ])
     message = str(exc.value)
     assert "sgrm-trace-batch" in message
     assert expected not in message
     assert actual not in message
+
+
+def test_search_help_uses_readable_integrity_option():
+    help_text = cli.build_parser().format_help()
+    assert "--expected-trace-checksum CHECKSUM" in help_text
+    assert "sha" not in help_text.lower()
+
+
+@pytest.mark.parametrize("option", ["--expected-trace-checksum", "--expected-trace-sha256"])
+def test_new_and_legacy_options_keep_the_same_integrity_check(option):
+    expected = hashlib.sha256(b"trusted reference trace").hexdigest()
+    args = cli.build_parser().parse_args([
+        "--solution-dir", "example/solution1", option, expected,
+    ])
+    assert args.expected_trace_sha256 == expected

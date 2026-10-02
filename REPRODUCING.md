@@ -1,6 +1,9 @@
-# Reproducing the trace searches
+# Reproducing the SGRM searches
 
-This guide runs SGRM against pre-generated LightningSim traces. Each result records the trace checksum, parameters, evaluated-point count, selected point, latency, modeled FIFO resources, and both normalized and raw resource reductions.
+This guide reruns SGRM using the execution traces supplied with the repository.
+Each result records the selected FIFO depths and implementations, latency,
+modeled resources, search parameters, and evaluated-point count. The supplied
+traces require no generation step or separate simulator command.
 
 ## Tested environment
 
@@ -10,8 +13,6 @@ This guide runs SGRM against pre-generated LightningSim traces. Each result reco
 | CPU | Intel Core Ultra 9 285K |
 | Python | 3.12.13 |
 | Conda | 26.1.1 |
-| LightningSim | 0.2.6 |
-| llvmlite | 0.43.0 |
 | Peak resident memory | 380 MiB on `FeedForward_large` |
 
 Allow approximately 1.5 GiB of free disk space for the environment, extracted 30-design bundle, and result files. CPU model and core count are not fixed requirements; searches run sequentially by default.
@@ -28,10 +29,8 @@ pytest
 ```
 
 The local prefix keeps this installation separate from existing named
-environments. The environment file pins the versions used to serialize and
-replay the supplied trace objects. If an older local Conda package cache has
-been modified, create the environment with a clean package cache before
-diagnosing the repository itself.
+environments. `environment.yml` installs all pinned search-runtime dependencies
+automatically; no additional simulator installation or configuration is needed.
 
 ## Included bicg trace
 
@@ -74,15 +73,15 @@ The versioned trace archive is tracked in this repository. Check and extract it
 from the repository root:
 
 ```bash
-sha256sum --check datasets/SHA256SUMS
+python datasets/check_bundles.py
 tar -xJf datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz
 ```
 
-The checksum command must print:
+The bundle check must print:
 
 ```text
-datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz: OK
-datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz: OK
+PASS datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz
+PASS datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz
 ```
 
 Run and verify all 30 designs:
@@ -101,7 +100,7 @@ Success is 30 `PASS` lines from each command. On the tested workstation, the seq
 
 The batch runner continues after a per-design error and returns a nonzero exit status if any design fails. Add `--fail-fast` to stop at the first failure. Every result is written as `<design>.json`; `index.json` records the manifest checksum, global parameters, statuses, and total wall time.
 
-Each design has a default 1,800-second timeout. Use `--timeout-s <seconds>` to
+Each design has a default 1,800-second timeout. Use `--timeout-s 3600`, for example, to
 adjust it for the host system.
 
 ## Result validation
@@ -109,7 +108,7 @@ adjust it for the host system.
 `sgrm-verify-results` checks:
 
 - manifest and result schema versions;
-- design identity and trace SHA-256;
+- design identity and trace integrity metadata;
 - non-deadlocking baseline and selected points;
 - `selected_latency <= baseline_latency * (1 + epsilon)`;
 - non-negative integer BRAM, URAM, FF, and LUT values;
@@ -131,37 +130,3 @@ FIFO-subsystem measurements separately from the search-model estimates.
 The approximately 1.5 GiB disk allowance above covers trace searches only.
 Hardware-tool installation and generated synthesis projects require additional
 storage and are not prerequisites for replaying or verifying the searches.
-
-## Building a manifest for another trace bundle
-
-The manifest builder expects this archival layout:
-
-```text
-<trace-root>/
-  <design>/
-    hls_<design>/
-      hls.app
-      solution1/
-        trace.pkl
-```
-
-For a separately prepared corpus, replace `./my-trace-bundle` below with its
-actual directory, then run:
-
-```bash
-sgrm-build-manifest --trace-root ./my-trace-bundle
-```
-
-The included `bicg` fixture uses a deliberately compact layout and ships with
-its manifest already generated; it is not an input to this archival-layout
-builder example.
-
-An optional newline-delimited corpus file can fix membership and ordering:
-
-```bash
-sgrm-build-manifest \
-  --trace-root ./my-trace-bundle \
-  --design-list datasets/stream_hls_30.txt
-```
-
-The generated `manifest.json` stores per-trace size and SHA-256 metadata. Use `--expected-results-dir <directory>` to embed a validated reference subset from existing per-design JSON results.

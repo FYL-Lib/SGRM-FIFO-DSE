@@ -78,7 +78,7 @@ def verify_result(result: dict, entry: dict) -> list[str]:
     if result.get("design") != entry["design"]:
         errors.append("result.design does not match the manifest")
     if result.get("trace_sha256", "").lower() != entry["trace_sha256"].lower():
-        errors.append("result.trace_sha256 does not match the manifest")
+        errors.append("result trace identity does not match the manifest")
 
     baseline = result.get("baseline")
     selected = result.get("selected")

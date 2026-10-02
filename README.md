@@ -9,9 +9,10 @@ deadlock freedom and a hard latency constraint on the evaluated execution trace:
 latency <= baseline_latency * (1 + epsilon)
 ```
 
-The reference configuration uses `epsilon = 0`. Searches replay pre-generated
-LightningSim traces and use the analytical FIFO resource model to guide the
-four-stage optimizer. The optional hardware workflow applies the selected
+The reference configuration uses `epsilon = 0`. The repository provides the
+execution traces needed to rerun SGRM on all 30 Stream-HLS designs. The
+four-stage optimizer uses these traces and the analytical FIFO resource model
+to select FIFO configurations. The hardware-validation workflow applies those
 configurations to the original C++ designs and measures their FIFO-subsystem
 resources with Vitis HLS and Vivado.
 
@@ -27,7 +28,9 @@ python -m pip install -e '.[dev]'
 python -m pytest
 ```
 
-The pinned environment uses Python 3.12, LightningSim 0.2.6, and llvmlite 0.43.
+The environment file installs Python 3.12 and all pinned search dependencies
+automatically. The supplied traces are ready to use: no separate simulator
+setup, simulator command, or trace-generation step is required.
 Confirm that Python imports this checkout:
 
 ```bash
@@ -37,15 +40,15 @@ python -c "import sgrm; print(sgrm.__file__)"
 If you already installed the search environment, you can reuse it and start
 with the archive checks below.
 
-## Reproduce the 30 trace searches
+## Reproduce the 30 SGRM searches
 
 Verify both supplied archives before extracting or replaying traces:
 
 ```bash
-sha256sum --check datasets/SHA256SUMS
+python datasets/check_bundles.py
 ```
 
-Both the trace archive and the source archive must report `OK`. Then run:
+Both the trace archive and the source archive must report `PASS`. Then run:
 
 ```bash
 tar -xJf datasets/sgrm-stream-hls-30-traces-v0.1.0.tar.xz
@@ -71,7 +74,7 @@ explicit storage implementations, trace latency, modeled resources, and
 provenance. `index.json` records the batch status. The resource estimates in
 the search JSON are distinct from the post-synthesis measurements below.
 
-See [Reproducing the trace searches](REPRODUCING.md) for the small included
+See [Reproducing the SGRM searches](REPRODUCING.md) for the small included
 `bicg` example, exact environment details, and result-field definitions.
 
 ## Reproduce post-synthesis resources
@@ -239,28 +242,9 @@ BRAM measurements use 36-Kbit tile equivalents: `RAMB36 + RAMB18/2`.
 Corpus resource reduction is computed from the geometric mean of per-design
 selected/native cost ratios.
 
-## Core API
-
-```python
-from sgrm import SGRMOptimizer
-
-optimizer = SGRMOptimizer(
-    backend,
-    epsilon=0.0,
-    budget=1000,
-    seed=1,
-)
-evaluated_points = optimizer.solve()
-best = optimizer.get_best_feasible()
-```
-
-`backend` implements the `EvaluationBackend` protocol in
-[src/sgrm/interfaces.py](src/sgrm/interfaces.py). The included trace adapter is
-one integration; other evaluators can implement the same protocol.
-
 ## Documentation
 
-- [Trace searches](REPRODUCING.md)
+- [SGRM searches](REPRODUCING.md)
 - [Hardware validation](hardware_validation/README.md)
 - [Three-design walkthrough](hardware_validation/QUICKSTART.md)
 - [Algorithm](docs/algorithm.md)
