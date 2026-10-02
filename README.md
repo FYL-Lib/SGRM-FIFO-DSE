@@ -16,6 +16,10 @@ to select FIFO configurations. The hardware-validation workflow applies those
 configurations to the original C++ designs and measures their FIFO-subsystem
 resources with Vitis HLS and Vivado.
 
+There are two independent setup steps: the searches and source preparation
+need only the Python environment below; hardware resource measurements also
+need separately installed AMD tools. Conda does not install those tools.
+
 ## Install
 
 Run commands from the repository root in a Linux x86-64 terminal with Conda
@@ -127,20 +131,31 @@ automatically; you do not need to read or enter checksum values.
 
 ### 2. Configure the hardware tools
 
-Install and configure **Vitis HLS 2024.2** and **Vivado 2024.2**, including
+Install and configure **classic Vitis HLS 2024.2** and **Vivado 2024.2**, including
 the VCK190 part `xcvc1902-vsva2197-2MP-e-S` and the required licenses.
-Load the installation's `settings64.sh` files as appropriate for your host,
-then check:
+Use the installation paths on **your own machine**. See
+[Hardware tool setup](hardware_validation/TOOLS.md) for interactive commands
+to load your `settings64.sh` files and select explicit executable paths.
+If your AMD environment is already loaded, run this precheck from the
+repository root:
 
 ```bash
-vitis_hls -version
-vivado -version
+python hardware_validation/validate_hardware.py --stage check-tools
 python -c "import sgrm; print(sgrm.__file__)"
 ```
 
-Both AMD tools must report 2024.2, and Python should still import this
-checkout. Tool binaries, licenses, and vendor headers are not included.
+The precheck prints the resolved paths and requires both tools to report
+2024.2. It does not start synthesis or create hardware projects. Python should
+still import this checkout. Tool binaries, licenses, and vendor headers are
+not included; licenses and device support are checked during the hardware run.
 No physical board is required. Both configurations target VCK190 at 10 ns.
+
+An executable named `vitis_hls` can forward to the newer `vitis-run` interface.
+An error about an unrecognized `-version` option does not mean SGRM search has
+failed: select the classic 2024.2 executable as described in the setup guide.
+The unified CLI is not a supported substitute for this measurement workflow.
+If `vivado` is not found, load its own installation's environment before
+continuing. You can stop after preparation without either AMD tool.
 
 ### 3. Run the six hardware jobs
 
@@ -246,6 +261,7 @@ selected/native cost ratios.
 
 - [SGRM searches](REPRODUCING.md)
 - [Hardware validation](hardware_validation/README.md)
+- [Hardware tool setup](hardware_validation/TOOLS.md)
 - [Three-design walkthrough](hardware_validation/QUICKSTART.md)
 - [Algorithm](docs/algorithm.md)
 - [Architecture](docs/architecture.md)

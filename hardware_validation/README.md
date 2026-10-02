@@ -14,11 +14,27 @@ an explicit `bind_storage type=fifo impl=...` directive, including for SRL.
 ## Prerequisites
 
 - Python 3.10 or newer; the validation script uses the standard library only.
-- AMD Vitis HLS **2024.2** and Vivado **2024.2**, including the VCK190 part
+- AMD **classic Vitis HLS 2024.2** and **Vivado 2024.2**, including the VCK190 part
   `xcvc1902-vsva2197-2MP-e-S` and the required tool licenses.
 - A configured AMD environment in which `vitis_hls` can invoke Vivado. Tool
   binaries, licenses, and vendor headers are not included in this repository.
 - Per-design JSON results from the [30-design trace searches](../REPRODUCING.md).
+
+AMD tools are needed only for `--stage run` or `--stage all` (the default).
+`--stage prepare` and `--stage report` do not require them. Search replay does
+not require them either. Conda supplies the Python environment, not AMD tools.
+
+Follow [Hardware tool setup](TOOLS.md) using your own installation paths, then
+check both tools before starting any hardware job:
+
+```bash
+python hardware_validation/validate_hardware.py --stage check-tools
+```
+
+This standalone command checks resolved executable paths and versions only;
+it needs no search results or prepared plan and does not start synthesis.
+Both releases must be 2024.2. A newer `vitis_hls` wrapper that forwards to
+`vitis-run` is rejected with instructions for selecting the classic interface.
 
 The source archive is approximately 28 MiB compressed (37.8 MB uncompressed).
 Hardware-tool installations and generated projects need additional disk space;
@@ -50,8 +66,18 @@ python hardware_validation/validate_hardware.py \
 The script verifies and extracts the supplied source archive automatically,
 checks all requested result files, prepares 30 native and 30 selected projects,
 and runs them with at most two simultaneous hardware jobs. Use `--jobs 1` on a
-memory-constrained host. `--vitis-hls /path/to/Vitis_HLS/2024.2/bin/vitis_hls`
-can select the tool explicitly; `VITIS_HLS` is also supported.
+memory-constrained host. Use `--vitis-hls` and `--vivado` with the full paths to
+your classic HLS and Vivado executables to select installations explicitly;
+see [the setup guide](TOOLS.md) for complete commands. `VITIS_HLS` and `VIVADO`
+can also provide the executable paths. Explicit flags take precedence, then
+these environment variables, then the commands found on `PATH`.
+
+Every `run` or `all` invocation repeats the tool precheck before launching
+jobs. Explicit tool selections apply to that invocation, so repeat the flags
+when resuming. For standard AMD installations, the child-process environment
+selects the checked HLS/Vivado roots and their executable directories; the
+calling shell is not modified. The HLS Tcl export step invokes Vivado, rather
+than treating `run_vivado.tcl` as a standalone Vivado Tcl script.
 
 The default target is VCK190 at 10 ns. Both variants use the same compiler
 settings from the reference measurement protocol, including unsafe

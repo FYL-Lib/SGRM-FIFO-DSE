@@ -44,10 +44,22 @@ documentation are for inspection, not commands to paste into a shell.
 Native and optimized projects use the readable directory names `native` and
 `sgrm`; integrity checks run automatically without entering checksum values.
 
-## 2. Run HLS and Vivado RTL synthesis
+## 2. Configure and check the hardware tools
 
-Configure AMD Vitis HLS/Vivado 2024.2, the VCK190 part, and licenses as described
-in [Hardware validation](README.md). Then run:
+Configure classic Vitis HLS 2024.2 and Vivado 2024.2, the VCK190 part, and
+licenses using [Hardware tool setup](TOOLS.md). Use paths from your machine,
+not another workstation. Then check from the repository root:
+
+```bash
+python hardware_validation/validate_hardware.py --stage check-tools
+```
+
+Expect `PASS Vitis HLS 2024.2 (classic Tcl interface)`, `PASS Vivado 2024.2`,
+and `TOOL CHECK PASS`. This step does not start synthesis. If a tool is
+missing, a different release is selected, or `vitis_hls` forwards to
+`vitis-run`, use the setup guide to resolve the error before continuing.
+
+## 3. Run HLS and Vivado RTL synthesis
 
 ```bash
 python hardware_validation/validate_hardware.py \
@@ -59,8 +71,10 @@ python hardware_validation/validate_hardware.py \
 This builds the six prepared jobs. Repeating the command safely reuses completed
 jobs whose fingerprints and report checksums match. The existing plan defines
 the subset; omit `--design` and `--results-dir` from `run` and `report` commands.
+If you selected executables with `--vitis-hls` and `--vivado` during the
+precheck, pass the same flags here; a precheck does not save tool selections.
 
-## 3. Collect and check the measurements
+## 4. Collect and check the measurements
 
 ```bash
 python hardware_validation/validate_hardware.py \

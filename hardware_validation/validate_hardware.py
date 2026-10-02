@@ -3,7 +3,8 @@
 
 Uses Python's standard library. Vitis HLS/Vivado 2024.2 are needed only for
 --stage run or all. --stage prepare performs all input and rewriting checks
-without invoking either hardware tool.
+without invoking either hardware tool. --stage check-tools checks executable
+paths and versions without creating hardware projects or starting synthesis.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,6 +41,120 @@ STORAGE_PRAGMA = re.compile(
 FIFO_MODULE = re.compile(r"_fifo_w\d+_d\d+(?:_[A-Z])?(?:_\d+)?$")
 AUTO_DEPTH = re.compile(r"depth is automatically increased", re.IGNORECASE)
 RESOURCE_CAPACITIES = {"bram": 967, "uram": 463, "ff": 1799680, "lut": 899840}
+TOOL_VERSION = "2024.2"
+
+
+def resolve_tool(value: str, label: str, option: str) -> str:
+    """Resolve a command or executable path, without assuming an install root."""
+    path = shutil.which(str(Path(value).expanduser()))
+    if path is None:
+        raise FileNotFoundError(
+            f"{label} executable not found: {value!r}. Load this machine's AMD "
+            f"{TOOL_VERSION} settings64.sh, or supply {option} with the full "
+            "executable path (not a directory or a shell alias)."
+        )
+    return str(Path(path).resolve())
+
+
+def hardware_environment(executables: dict[str, str]) -> dict[str, str]:
+    """Select the checked installations for child processes, not the user's shell."""
+    environment = os.environ.copy()
+    bins = [str(Path(path).parent) for path in executables.values()]
+    environment["PATH"] = os.pathsep.join([*bins, environment.get("PATH", "")])
+    for key, variable in (("hls", "XILINX_HLS"), ("vivado", "XILINX_VIVADO")):
+        if key not in executables:
+            continue
+        binary = Path(executables[key])
+        root = binary.parent.parent
+        # Do not infer an AMD root from an unrelated /usr/bin wrapper.
+        if binary.parent.name == "bin" and (root / "settings64.sh").is_file():
+            environment[variable] = str(root)
+            if key == "vivado" and (root / "data").is_dir():
+                environment["XILINX_HLS_DEVICE_DATADIR"] = str(root / "data")
+    return environment
+
+
+def probe_tool(path: str, key: str, environment: dict[str, str]) -> str:
+    label = "Vitis HLS" if key == "hls" else "Vivado"
+    if key == "hls" and Path(path).name in {"vitis", "vitis-run"}:
+        raise RuntimeError(
+            f"{label}: {path} is the unified Vitis CLI. This hardware workflow "
+            "uses the classic vitis_hls -f Tcl interface; select the classic "
+            f"Vitis HLS {TOOL_VERSION} executable with --vitis-hls."
+        )
+    try:
+        # Vendor version commands can write logs; keep them out of the checkout.
+        with tempfile.TemporaryDirectory(prefix="sgrm-tool-check-") as directory:
+            process = subprocess.run(
+                [path, "-version"], cwd=directory, env=environment,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, errors="replace",
+                timeout=30, check=False,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{label} version check timed out after 30 s: {path}") from exc
+    output = (process.stdout or "").strip()
+    if key == "hls" and "vitis-run" in output.lower():
+        raise RuntimeError(
+            f"Vitis HLS: {path} forwards to the unified vitis-run CLI, which "
+            "does not accept the classic -version/-f options. Select the "
+            f"classic Vitis HLS {TOOL_VERSION} executable with --vitis-hls."
+        )
+    if process.returncode:
+        details = "\n".join(output.splitlines()[:6]) or "no version output"
+        raise RuntimeError(
+            f"{label} version check exited with {process.returncode}: {path}\n{details}"
+        )
+    product = r"Vitis\s+HLS(?:\s+-[^\r\n]*?)?" if key == "hls" else r"Vivado"
+    match = re.search(
+        r"^\s*(?:\*+\s*)?" + product + r"\s+v?(\d{4}\.\d+)\b",
+        output, re.IGNORECASE | re.MULTILINE,
+    )
+    if match is None:
+        details = "\n".join(output.splitlines()[:6]) or "no version output"
+        raise RuntimeError(
+            f"{label}: unrecognized version output from {path}; expected {label} {TOOL_VERSION}.\n{details}"
+        )
+    if match[1] != TOOL_VERSION:
+        raise RuntimeError(
+            f"{label}: found {match[1]} at {path}; this measurement protocol "
+            f"requires {TOOL_VERSION}. Select the matching installation, not "
+            "another release earlier on PATH."
+        )
+    return output
+
+
+def check_tools(vitis_hls: str, vivado: str) -> dict:
+    """Check both tools even when one is missing; never launch a Tcl project."""
+    executables, versions, errors = {}, {}, []
+    specs = (("hls", "Vitis HLS", vitis_hls, "--vitis-hls"), ("vivado", "Vivado", vivado, "--vivado"))
+    for key, label, value, option in specs:
+        try:
+            executables[key] = resolve_tool(value, label, option)
+            print(f"FOUND {label}: {executables[key]}", flush=True)
+        except FileNotFoundError as exc:
+            errors.append(str(exc))
+    environment = hardware_environment(executables)
+    for key, label, _, _ in specs:
+        if key not in executables:
+            continue
+        try:
+            versions[key] = probe_tool(executables[key], key, environment)
+            interface = " (classic Tcl interface)" if key == "hls" else ""
+            print(f"PASS {label} {TOOL_VERSION}{interface}", flush=True)
+        except (RuntimeError, OSError) as exc:
+            errors.append(str(exc))
+    if errors:
+        raise RuntimeError(
+            "Hardware-tool precheck failed:\n- " + "\n- ".join(errors)
+            + "\nSee hardware_validation/TOOLS.md for setup and troubleshooting."
+        )
+    print(
+        "TOOL CHECK PASS: executable paths and versions verified; no synthesis started.\n"
+        "Licenses and VCK190 device support are checked by AMD tools during the hardware run.",
+        flush=True,
+    )
+    return {"executables": executables, "versions": versions, "environment": environment}
 
 
 def read_json(path: Path) -> dict:
@@ -427,7 +543,7 @@ def parse_hls_latency(path: Path) -> int | None:
     return int(value) if value is not None and value.isdecimal() else None
 
 
-def command(tool: str, tcl: Path, run_dir: Path, log: Path) -> float:
+def command(tool: str, tcl: Path, run_dir: Path, log: Path, *, env: dict[str, str] | None = None) -> float:
     started = time.perf_counter()
     with log.open("w", encoding="utf-8") as stream:
         process = subprocess.run(
@@ -436,6 +552,7 @@ def command(tool: str, tcl: Path, run_dir: Path, log: Path) -> float:
             stdin=subprocess.DEVNULL,
             stdout=stream,
             stderr=subprocess.STDOUT,
+            env=env,
             check=False,
         )
     elapsed = time.perf_counter() - started
@@ -444,7 +561,7 @@ def command(tool: str, tcl: Path, run_dir: Path, log: Path) -> float:
     return elapsed
 
 
-def run_job(job: dict, tool: str, tool_version: str) -> dict:
+def run_job(job: dict, tool: str, tool_version: str, *, toolchain: dict | None = None) -> dict:
     run_dir = Path(job["run_dir"])
     for relative, digest in job["source_files_sha256"].items():
         if sha256(checked_path(run_dir, relative)) != digest:
@@ -468,12 +585,21 @@ def run_job(job: dict, tool: str, tool_version: str) -> dict:
         "tool": tool,
         "tool_version": tool_version,
     })
+    environment = toolchain["environment"] if toolchain else None
+    if toolchain:
+        state.update({
+            "vivado_tool": toolchain["executables"]["vivado"],
+            "vivado_tool_version": toolchain["versions"]["vivado"],
+            "hls_interface": "classic",
+        })
     write_json(state_path, state)
     try:
         hls_xml, export, hierarchy = report_paths(job)
         if not state.get("hls_complete"):
             print(f"HLS {job['design']}/{job['variant']}", flush=True)
-            state["hls_wall_s"] = command(tool, run_dir / "run_hls.tcl", run_dir, run_dir / "hls.log")
+            state["hls_wall_s"] = command(
+                tool, run_dir / "run_hls.tcl", run_dir, run_dir / "hls.log", env=environment,
+            )
             if not hls_xml.is_file():
                 raise RuntimeError(f"HLS did not generate {hls_xml}")
             depth_messages = [
@@ -486,7 +612,11 @@ def run_job(job: dict, tool: str, tool_version: str) -> dict:
             state["hls_complete"] = True
             write_json(state_path, state)
         print(f"VIVADO {job['design']}/{job['variant']}", flush=True)
-        state["vivado_wall_s"] = command(tool, run_dir / "run_vivado.tcl", run_dir, run_dir / "vivado_export.log")
+        # This script contains HLS export_design, not standalone Vivado commands.
+        # HLS invokes the Vivado installation selected in the child environment.
+        state["vivado_wall_s"] = command(
+            tool, run_dir / "run_vivado.tcl", run_dir, run_dir / "vivado_export.log", env=environment,
+        )
         hls_xml, export, hierarchy = report_paths(job)
         state["fifo_subsystem"] = parse_hierarchy(hierarchy)
         state["whole_design"] = parse_export(export)
@@ -606,18 +736,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sources-dir", type=Path, help="extracted source-bundle root; by default verify and extract the supplied archive")
     parser.add_argument("--output-dir", type=Path, default=Path("results/hardware_validation"))
     parser.add_argument("--design", action="append", help="validate a named design; repeat for a subset")
-    parser.add_argument("--stage", choices=("prepare", "run", "report", "all"), default="all")
+    parser.add_argument("--stage", choices=("check-tools", "prepare", "run", "report", "all"), default="all")
     parser.add_argument("--jobs", type=int, default=2, help="maximum simultaneous hardware jobs")
-    parser.add_argument("--vitis-hls", default=os.environ.get("VITIS_HLS", "vitis_hls"))
+    parser.add_argument(
+        "--vitis-hls", default=os.environ.get("VITIS_HLS", "vitis_hls"),
+        help="classic Vitis HLS 2024.2 command or full executable path (default: VITIS_HLS or PATH)",
+    )
+    parser.add_argument(
+        "--vivado", default=os.environ.get("VIVADO", "vivado"),
+        help="Vivado 2024.2 command or full executable path (default: VIVADO or PATH)",
+    )
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    if args.stage == "check-tools":
+        if args.design or args.results_dir or args.sources_dir:
+            parser.error("check-tools does not use sources or search results; omit --design/--results-dir/--sources-dir")
+        check_tools(args.vitis_hls, args.vivado)
+        return 0
     output = args.output_dir.expanduser().resolve()
     if output == REPOSITORY or not output.name:
         parser.error("choose a dedicated output directory")
+    if args.stage in {"prepare", "all"} and args.results_dir is None:
+        parser.error("--results-dir is required for prepare/all")
+    if args.stage in {"run", "report"} and (args.design or args.results_dir or args.sources_dir):
+        parser.error("run/report use the existing plan; choose the subset with --stage prepare")
+    toolchain = check_tools(args.vitis_hls, args.vivado) if args.stage in {"run", "all"} else None
     if args.stage in {"prepare", "all"}:
-        if args.results_dir is None:
-            parser.error("--results-dir is required for prepare/all")
         source_root = (
             args.sources_dir.expanduser().resolve()
             if args.sources_dir else extract_source_archive(output / "_sources")
@@ -631,21 +776,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.stage == "prepare":
             return 0
     else:
-        if args.design or args.results_dir or args.sources_dir:
-            parser.error("run/report use the existing plan; choose the subset with --stage prepare")
         plan = read_json(output / "plan.json")
     if args.stage in {"run", "all"}:
-        tool = shutil.which(args.vitis_hls)
-        if tool is None:
-            raise FileNotFoundError("vitis_hls not found; source the AMD 2024.2 settings or use --vitis-hls")
-        version = subprocess.run(
-            [tool, "-version"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, check=False,
-        ).stdout
-        if not re.search(r"\bv?2024\.2\b", version):
-            raise RuntimeError("this protocol requires Vitis HLS 2024.2")
+        tool = toolchain["executables"]["hls"]
+        version = toolchain["versions"]["hls"]
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            futures = [pool.submit(run_job, job, tool, version.strip()) for job in plan["jobs"]]
+            futures = [
+                pool.submit(run_job, job, tool, version, toolchain=toolchain)
+                for job in plan["jobs"]
+            ]
             for future in as_completed(futures):
                 future.result()
     summary = collect_reports(plan, output)

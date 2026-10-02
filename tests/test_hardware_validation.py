@@ -343,3 +343,53 @@ def test_legacy_cache_still_rejects_changed_files(legacy_cached_job, changed_fil
     message = "staged input changed" if changed_file == "source" else "cached report changed"
     with pytest.raises(ValueError, match=message):
         hardware.run_job(job, "unused-tool", "2024.2")
+
+
+def test_run_job_uses_checked_vivado_environment_for_hls_export(preparation_inputs, monkeypatch):
+    source_root, manifest, results_dir, output = preparation_inputs
+    job = hardware.prepare_jobs(source_root, manifest, results_dir, output, ["example"])["jobs"][1]
+    run_dir = Path(job["run_dir"])
+    hls_xml, export, hierarchy = hardware.report_paths(job)
+    child = {"PATH": "/selected/Vivado/bin", "XILINX_VIVADO": "/selected/Vivado"}
+    toolchain = {
+        "environment": child,
+        "executables": {"hls": "/selected/HLS/bin/vitis_hls", "vivado": "/selected/Vivado/bin/vivado"},
+        "versions": {"hls": "Vitis HLS v2024.2", "vivado": "Vivado v2024.2"},
+    }
+    calls = []
+
+    def mock_command(tool, script, directory, log, *, env):
+        assert tool == toolchain["executables"]["hls"]
+        assert directory == run_dir
+        assert env is child
+        calls.append(script.name)
+        log.write_text("mock tool log\n")
+        if script.name == "run_hls.tcl":
+            hls_xml.parent.mkdir(parents=True)
+            hls_xml.write_text(
+                "<Report><SummaryOfOverallLatency><Worst-caseLatency>99</Worst-caseLatency>"
+                "</SummaryOfOverallLatency></Report>"
+            )
+        else:
+            assert "export_design -flow syn -format ip_catalog" in script.read_text()
+            export.parent.mkdir(parents=True)
+            export.write_text(
+                "LUT: 8\nFF: 12\nBRAM: 0\nURAM: 0\n"
+                "CP achieved post-synthesis: 8.0\nCP required: 10.0\n"
+            )
+            hierarchy.parent.mkdir(parents=True)
+            hierarchy.write_text(
+                "|Instance|Module|Total LUTs|FFs|RAMB36|RAMB18|URAM|\n"
+                "|fifo0|example_fifo_w32_d2|8|12|0|0|0|\n"
+            )
+        return 0.0
+
+    monkeypatch.setattr(hardware, "command", mock_command)
+    state = hardware.run_job(
+        job, toolchain["executables"]["hls"], toolchain["versions"]["hls"], toolchain=toolchain,
+    )
+    assert state["status"] == "OK"
+    assert calls == ["run_hls.tcl", "run_vivado.tcl"]
+    assert state["vivado_tool"] == toolchain["executables"]["vivado"]
+    assert state["vivado_tool_version"] == toolchain["versions"]["vivado"]
+    assert state["hls_interface"] == "classic"
