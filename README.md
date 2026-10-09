@@ -16,7 +16,7 @@ to select FIFO configurations. The hardware-validation workflow applies those
 configurations to the original C++ designs and measures their FIFO-subsystem
 resources with Vitis HLS and Vivado.
 
-There are two independent setup steps: the searches and source preparation
+The standard reproduction workflow has two independent setup steps: the searches and source preparation
 need only the Python environment below; hardware resource measurements also
 need separately installed AMD tools. Conda does not install those tools.
 
@@ -240,6 +240,15 @@ on the tested workstation, excluding the tools and transient files; reserve
 several tens of GiB for generated projects. A 4 TB SSD is not a minimum
 requirement.
 
+## Optional trace regeneration
+
+The complete local modified LightningSim source is included under
+[third_party/lightningsim](third_party/lightningsim). To regenerate execution
+traces from completed HLS synthesis projects, use the separate environment,
+source-build helper, and exporter in [Trace generation](trace_generation/README.md).
+This is optional: the standard searches above continue to use the supplied
+traces without running a simulator or installing AMD tools.
+
 ## Algorithm and resource objective
 
 SGRM groups structurally equivalent channels and searches concrete `srl`,
@@ -275,6 +284,7 @@ selected/native cost ratios.
 - [Evaluator interface](docs/interfaces.md)
 - [Resource model](docs/resource-model.md)
 - [Repository scope](docs/repository-scope.md)
+- [Optional trace generation and local LightningSim source](trace_generation/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
@@ -286,4 +296,4 @@ verifying their checksums; see [Security](SECURITY.md).
 
 SGRM is licensed under [Apache License 2.0](LICENSE). Upstream Stream-HLS
 benchmark sources retain their MIT license, included in the source bundle.
-External-runtime information and attribution are recorded in [NOTICE](NOTICE).
+Third-party source/runtime information and attribution are recorded in [NOTICE](NOTICE).

@@ -4,6 +4,12 @@ All notable changes to the SGRM core package are documented here.
 
 ## Unreleased
 
+- Included the complete local modified LightningSim Python/Rust backend,
+  C++ trace runtime, frontend, upstream recipe, license, and change notes.
+- Added an isolated source-build and completed-HLS trace-export workflow with
+  Versal schedule compatibility, FMADD support, and explicit testbench status.
+- Added checked source/trace rebinding for fresh traces without changing the
+  original benchmark archive or supplied-trace reproduction workflow.
 - Added automatic AMD-tool discovery, private settings loading, and readable
   machine-local configuration reused across terminals and hardware runs.
 - Distinguished undiscovered tools from incompatible installations while

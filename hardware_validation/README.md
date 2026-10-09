@@ -209,10 +209,8 @@ Search time is copied from the supplied JSON `wall_time_s`, including trace
 initialization; it is not the paper's optimizer-only wall time. HLS and Vivado
 durations are recorded separately. No synthesis time is counted as DSE time.
 
-The 60-job workflow verifies **SGRM versus the original Stream-HLS baseline**.
-It does not rerun FIFOAdvisor's five optimizers. Reconstructing a chart that
-also includes those methods requires their separately recorded measurements
-or independently synthesizing their selected configurations.
+The 60-job workflow verifies SGRM against the original Stream-HLS baseline
+across the complete 30-design corpus.
 
 ## Input and provenance checks
 

@@ -17,6 +17,9 @@ and post-synthesis resource measurements on 30 Stream-HLS designs.
 - Unit tests for core formulas and invariants
 - Versioned sources, testbenches, and workload inputs for 30 Stream-HLS designs
 - Paired native/SGRM hardware-validation script and post-synthesis reporting
+- Complete local modified LightningSim source with its upstream license
+- Optional, isolated source build and completed-HLS trace export
+- Checked source/trace mapping for regenerated traces
 
 ## Reproduction workflow
 
@@ -27,5 +30,7 @@ and post-synthesis resource measurements on 30 Stream-HLS designs.
    [Hardware validation](../hardware_validation/README.md).
 
 The supplied traces are ready for search replay; no separate simulator command
-or trace-generation step is required. AMD tools are needed only for the
-post-synthesis measurements and are not distributed with this repository.
+or trace-generation step is required. AMD tools are needed for post-synthesis
+measurements and optional trace regeneration, not supplied-trace searches.
+They are not distributed with this repository. The optional local-source
+workflow is documented in [Trace generation](../trace_generation/README.md).

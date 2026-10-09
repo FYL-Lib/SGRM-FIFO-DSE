@@ -11,6 +11,7 @@ htmlcov/
 .venv/
 .conda-sgrm/
 .conda-sgrm-clean/
+.conda-sgrm-trace/
 venv/
 build/
 dist/

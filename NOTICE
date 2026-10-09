@@ -4,8 +4,19 @@ Copyright 2026 SGRM Authors
 Licensed under the Apache License, Version 2.0. See the LICENSE file for
 the full license text.
 
-LightningSim is an external runtime dependency and remains subject to its
-upstream license terms.
+LightningSim is used as a runtime dependency. The local modified Python/Rust
+backend, C++ trace-runtime source, frontend, and upstream build recipe are
+included in third_party/lightningsim. LightningSim was developed by Rishov
+Sarkar and Sharc Lab, Georgia Institute of Technology:
+https://github.com/sharc-lab/LightningSim
+
+These third-party sources retain their GNU Affero General Public License,
+version 3 only (AGPL-3.0-only), in third_party/lightningsim/LICENSE. The SGRM
+Apache license does not replace that license. Local adaptations and
+source-release packaging adjustments are documented in
+third_party/lightningsim/LOCAL_CHANGES.md. The unmodified LLVM instrumenter,
+SystemC runtime, and prebuilt web assets are provided by the pinned upstream
+Conda package, not by private binaries committed to this repository.
 
 The optional Stream-HLS benchmark source bundle contains code and workload
 inputs from https://github.com/UCLA-VAST/Stream-HLS. The upstream MIT license

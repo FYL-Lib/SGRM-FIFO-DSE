@@ -1,0 +1,18 @@
+[package]
+name = "lightningsim-core"
+version = "0.2.6"
+edition = "2021"
+
+[dependencies]
+bincode = "2.0"
+bitvec = "1.0.1"
+pyo3 = { version = "0.24", features = ["extension-module"] }
+rayon = "1.8.0"
+rustc-hash = "1.1.0"
+slab = "0.4.5"
+smallvec = "1.11.1"
+
+[lib]
+name = "_core"
+path = "lightningsim-core/lib.rs"
+crate-type = ["cdylib"]

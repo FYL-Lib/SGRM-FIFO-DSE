@@ -1,0 +1,4 @@
+include Cargo.toml
+include Cargo.lock
+include LICENSE
+recursive-include lightningsim-core *.rs

@@ -1,0 +1,22 @@
+name: Local LightningSim source build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  source-build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          activate-environment: sgrm-trace
+          environment-file: trace_generation/environment.yml
+          auto-activate: false
+      - run: conda run --no-capture-output -n sgrm-trace python trace_generation/build_local.py --jobs 4
+      - run: conda run --no-capture-output -n sgrm-trace python -m pip install -e '.[dev]'
+      - run: conda run --no-capture-output -n sgrm-trace python trace_generation/build_local.py --check-only
+      - run: conda run --no-capture-output -n sgrm-trace python -m pytest -rs
