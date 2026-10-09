@@ -4,6 +4,9 @@ All notable changes to the SGRM core package are documented here.
 
 ## Unreleased
 
+- Added a portable original-source HLS entry point with separate tool-check,
+  command-preview, and synthesis stages; trace-generation instructions no
+  longer rely on a bare launcher name or manual shell-environment changes.
 - Included the complete local modified LightningSim Python/Rust backend,
   C++ trace runtime, frontend, upstream recipe, license, and change notes.
 - Added an isolated source-build and completed-HLS trace-export workflow with

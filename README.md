@@ -20,6 +20,10 @@ The standard reproduction workflow has two independent setup steps: the searches
 need only the Python environment below; hardware resource measurements also
 need separately installed AMD tools. Conda does not install those tools.
 
+To generate new traces from the original sources instead of using the supplied
+traces, follow the separate [source-to-trace guide](trace_generation/README.md).
+It includes a source build, portable HLS tool checks, synthesis, and trace export.
+
 ## Install
 
 Run commands from the repository root in a Linux x86-64 terminal with Conda
@@ -248,6 +252,19 @@ traces from completed HLS synthesis projects, use the separate environment,
 source-build helper, and exporter in [Trace generation](trace_generation/README.md).
 This is optional: the standard searches above continue to use the supplied
 traces without running a simulator or installing AMD tools.
+
+After setting up the separate generation environment, the HLS entry point is:
+
+```bash
+python trace_generation/run_hls.py --stage check-tools
+python trace_generation/run_hls.py --design gemm --stage plan
+```
+
+Neither command starts synthesis. The guide's explicit `--stage run` command
+uses the verified classic 2024.2 launcher, not whichever executable happens to
+be named `vitis_hls` on `PATH`. Installation locations need not match this
+workstation; nonstandard installations can use `--tool-root` or `--vitis-hls`.
+Extract the source archive as shown in the guide before planning a synthesis.
 
 ## Algorithm and resource objective
 

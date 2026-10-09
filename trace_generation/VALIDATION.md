@@ -55,6 +55,23 @@ No old trace was loaded in the fresh-export pipeline. Source preparation used
 a separate derived manifest after checking the regenerated FIFO contracts;
 the published archives and original source manifest were left unchanged.
 
+## Portable HLS entry point checks
+
+The source-to-trace guide now uses `run_hls.py` instead of an unverified
+launcher name. Its tool-check and plan stages were checked in a separate copy
+of the release, in a directory containing spaces, from an unrelated working
+directory. AMD environment variables were unset and `PATH` contained only
+system directories. Discovery located and checked the compatible 2024.2
+classic launcher and matching runtime without manual environment loading.
+Both stages passed and created no HLS project or synthesis log.
+
+The updated regression suite passed all 151 tests. Tool-free fixtures cover
+unified wrappers shadowing classic tools, incompatible releases, nonstandard
+installation roots, both directory layouts, relative and space-containing
+paths, private site settings, source integrity, and refusal to overwrite
+existing synthesis outputs. These checks do not start HLS or Vivado synthesis;
+the real synthesis run still requires AMD licenses and VCK190 device support.
+
 ## Testbench status is separate from trace export
 
 Of the 30 instrumented testbenches, 19 exited successfully. The other 11

@@ -40,6 +40,7 @@ def runtime_environment(root: Path, environment: dict[str, str]) -> dict[str, st
 def explicit_runtime(root: Path, settings: list[Path], base: dict[str, str]) -> dict[str, str]:
     """Use AMD headers/libraries for completed synthesis without invoking HLS."""
     root = root.expanduser().resolve()
+    settings = [path.expanduser().resolve() for path in settings]
     automatic = root / "settings64.sh"
     scripts = list(dict.fromkeys([*([automatic] if automatic.is_file() else []), *settings]))
     environment = hardware_module().load_amd_environment(scripts, base)
@@ -49,6 +50,8 @@ def explicit_runtime(root: Path, settings: list[Path], base: dict[str, str]) -> 
 def find_hls(value: str | None, roots: list[Path] | None,
              settings: list[Path], base: dict[str, str]) -> tuple[str, dict[str, str]]:
     tools = hardware_module()
+    roots = None if roots is None else [path.expanduser().resolve() for path in roots]
+    settings = [path.expanduser().resolve() for path in settings]
     saved = tools.read_tool_config(tools.DEFAULT_TOOL_CONFIG)
     candidates, explicit = tools.discover_tool("hls", value, saved, roots)
     errors = []
@@ -64,12 +67,14 @@ def find_hls(value: str | None, roots: list[Path] | None,
             root = Path(environment.get("XILINX_HLS", ""))
             # Some AMD installations keep the classic launcher in Vitis_HLS
             # but its 2024.2 headers/runtime in the sibling Vitis directory.
-            runtime_roots = [root, root.parent.parent / "Vitis" / tools.TOOL_VERSION]
+            runtime_roots = [root, root.parent.parent / "Vitis" / tools.TOOL_VERSION,
+                             root.parent / "Vitis"]
             vitis = environment.get("XILINX_VITIS")
-            if vitis and Path(vitis).name == tools.TOOL_VERSION:
+            if vitis and tools.TOOL_VERSION in Path(vitis).parts:
                 runtime_roots.append(Path(vitis))
             root = next((path for path in runtime_roots
-                         if (path / "include/Makefile.sysc.rules").is_file()), None)
+                         if all((path / "include" / name).is_file()
+                                for name in ("Makefile.sysc.rules", "hls_stream.h"))), None)
             if root is None:
                 raise RuntimeError("The selected HLS environment lacks include/Makefile.sysc.rules.")
             return executable, runtime_environment(root, environment)
@@ -80,4 +85,5 @@ def find_hls(value: str | None, roots: list[Path] | None,
     detail = "\n- ".join(errors[:5]) or "No executable was discovered."
     raise RuntimeError("No compatible Vitis HLS 2024.2 launcher/runtime was discovered.\n- " + detail
                        + "\nSupply --vitis-hls with its classic executable path or --tool-root with the installation root."
-                       + "\nFor completed synthesis, --hls-root can instead select the 2024.2 directory containing include/Makefile.sysc.rules.")
+                       + "\nFor completed synthesis, the separate generate_trace.py exporter also accepts --hls-root"
+                       + " to select the 2024.2 directory containing include/Makefile.sysc.rules.")

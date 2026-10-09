@@ -51,21 +51,60 @@ python datasets/check_bundles.py
 tar -xJf datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz
 ```
 
-Load your own installation's settings file; replace the example path with the
-actual path on your machine:
+Check the HLS tool using the repository's portable entry point. Do not call a
+bare `vitis_hls` command: on some installations that name forwards to the
+incompatible unified `vitis-run` interface.
 
 ```bash
-source /path/to/Vitis_HLS/2024.2/settings64.sh
+python trace_generation/run_hls.py --stage check-tools
 ```
 
-Then run the original synthesis script:
+Expected output ends with `TOOL CHECK PASS`. This checks only HLS, not Vivado,
+and does not start synthesis. The script discovers installed tools, rejects
+incompatible launchers and releases, and privately loads the selected
+installation's settings. It does not change your active Conda environment or
+require installation paths to match another machine.
+
+Preview the original `gemm` synthesis, then run it:
 
 ```bash
-(
-  cd sgrm-stream-hls-30-sources-v0.1.0/gemm
-  vitis_hls -l hls_synthesis.log hls.tcl gemm syn
-)
+python trace_generation/run_hls.py --design gemm --stage plan
+python trace_generation/run_hls.py --design gemm --stage run
 ```
+
+All commands in this guide run from the repository root; do not `cd` into
+`gemm`. The entry point checks the original source files and selects the
+correct working directory automatically. Only `--stage run` starts synthesis.
+It uses the original `hls.tcl` with `gemm syn`, retains `hls_synthesis.log`,
+and checks the completed outputs needed by the exporter. The default stage is
+`plan`, so omitting `--stage` cannot accidentally start a hardware job.
+
+For an installation outside common locations, add its actual installation
+base to **each** tool-dependent command (replace the example path):
+
+```bash
+python trace_generation/run_hls.py --stage check-tools --tool-root /path/to/AMD
+python trace_generation/run_hls.py --design gemm --stage plan --tool-root /path/to/AMD
+python trace_generation/run_hls.py --design gemm --stage run --tool-root /path/to/AMD
+```
+
+Alternatively use `--vitis-hls /path/to/Vitis_HLS/2024.2/bin/vitis_hls` to select
+a classic executable explicitly, or `--settings /path/to/site-settings.sh`
+for trusted site-specific setup. Use the same selection options for the
+export command in step 3. `--sources-dir` accepts a source bundle extracted
+elsewhere. These paths belong to your installation, not to the authors' host.
+Shell aliases do not select a tool for Python; use an executable path instead.
+
+An explicitly selected incompatible tool stops the command before synthesis;
+it is never silently replaced. If only the unified CLI is installed, install
+the matching classic Tcl interface or use an already completed 2024.2 project
+with the runtime-only export described below. A compatible AMD installation,
+licenses, and device support remain external prerequisites; this repository
+does not install or emulate them.
+
+Existing HLS projects and logs are not overwritten. Export a completed project
+directly, or extract the archive in a new directory and pass `--sources-dir`
+for an independent synthesis run.
 
 The original settings are top `forward`, part `xcvc1902-vsva2197-2MP-e-S`,
 10 ns, `open_solution -flow_target vivado`, and
@@ -83,8 +122,8 @@ python trace_generation/generate_trace.py \
   --output results/regenerated-traces/gemm/hls_gemm/solution1/trace.pkl
 ```
 
-The command automatically discovers classic Vitis HLS 2024.2 and loads its
-settings privately. If discovery needs help, add `--tool-root /path/to/AMD` or
+The command uses the same tool discovery as `run_hls.py` and loads settings
+privately. If discovery needs help, add `--tool-root /path/to/AMD` or
 `--vitis-hls /path/to/Vitis_HLS/2024.2/bin/vitis_hls`. An explicitly selected
 incompatible executable is rejected, not silently replaced. `--settings` can
 provide an additional trusted settings file. Neither your parent shell nor the
