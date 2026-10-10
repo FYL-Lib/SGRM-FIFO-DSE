@@ -20,14 +20,18 @@ Searches and source preparation need only the Python environment below.
 Hardware resource measurements also need separately installed AMD tools;
 Conda does not install those tools.
 
-To generate new traces from the original sources instead of using the supplied
-traces, follow the separate [source-to-trace guide](trace_generation/README.md).
-It includes a source build, portable HLS tool checks, synthesis, and trace export.
+You can start with the supplied traces or regenerate all 30 from the original
+sources. Both paths feed the same SGRM search and result verifier. The
+[complete source-to-search workflow](#reproduce-all-30-searches-from-original-sources)
+below covers synthesis, trace export, search, and verification in one environment.
 
 ## Install
 
 Run commands from the repository root in a Linux x86-64 terminal with Conda
 available. The local prefix avoids changing an existing named environment.
+For the supplied-trace path, use the environment below. To start from original
+sources, use the [source-to-search environment](trace_generation/README.md#1-build-the-source-to-search-environment)
+instead; it already includes SGRM and does not require this second environment.
 
 ```bash
 conda env create --prefix ./.conda-sgrm --file environment.yml
@@ -48,7 +52,7 @@ python -c "import sgrm; print(sgrm.__file__)"
 If you already installed the search environment, you can reuse it and start
 with the archive checks below.
 
-## Reproduce the 30 SGRM searches
+## Reproduce the 30 SGRM searches using supplied traces
 
 Verify both supplied archives before extracting or replaying traces:
 
@@ -84,6 +88,112 @@ the search JSON are distinct from the post-synthesis measurements below.
 See [Reproducing the SGRM searches](REPRODUCING.md) for the small included
 `bicg` example, setup instructions, and result-field definitions.
 
+## Reproduce all 30 searches from original sources
+
+This path regenerates every trace and then uses those newly generated files for
+SGRM, rather than replaying the supplied trace archive. The source bundle
+contains all 30 designs; `gemm` is only a single-design example in the detailed
+guide.
+
+First complete [source-generation environment setup](trace_generation/README.md#1-build-the-source-to-search-environment).
+That environment includes both the locally built trace generator and SGRM;
+keep it activated for the entire workflow. Install classic Vitis HLS 2024.2
+with VCK190 support and the required licenses. Vivado and a physical board are
+not required for these steps.
+
+Run this complete block from the repository root in Bash:
+
+```bash
+(
+  set -e
+  if [ -e results/source-to-search-30 ]; then
+    echo "Use a fresh results/source-to-search-30 directory; existing runs are not overwritten." >&2
+    exit 1
+  fi
+
+  python datasets/check_bundles.py
+  python trace_generation/run_hls.py --stage check-tools
+
+  mkdir -p results/source-to-search-30/sources
+  tar -xJf datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz \
+    -C results/source-to-search-30/sources
+
+  while IFS= read -r design || [ -n "$design" ]; do
+    case "$design" in ""|\#*) continue ;; esac
+
+    python trace_generation/run_hls.py \
+      --sources-dir results/source-to-search-30/sources/sgrm-stream-hls-30-sources-v0.1.0 \
+      --design "$design" --stage run
+
+    python trace_generation/generate_trace.py \
+      --solution-dir "results/source-to-search-30/sources/sgrm-stream-hls-30-sources-v0.1.0/$design/hls_$design/solution1" \
+      --output "results/source-to-search-30/traces/$design/hls_$design/solution1/trace.pkl"
+  done < datasets/stream_hls_30.txt
+
+  sgrm-build-manifest \
+    --trace-root results/source-to-search-30/traces \
+    --design-list datasets/stream_hls_30.txt
+
+  sgrm-trace-batch \
+    --manifest results/source-to-search-30/traces/manifest.json \
+    --output-dir results/source-to-search-30/search \
+    --budget 1000 --seed 1 --epsilon 0 \
+    --fail-fast
+
+  sgrm-verify-results \
+    --manifest results/source-to-search-30/traces/manifest.json \
+    --results-dir results/source-to-search-30/search
+)
+```
+
+The block processes the design list sequentially, stops on a failed command,
+and requires all 30 traces before starting SGRM. It does not run RTL
+co-simulation or Vivado. Each successful export prints `EXPORTED`; the search
+and verifier each print 30 `PASS` lines. Trace export and numerical testbench
+checks have [separate recorded statuses](trace_generation/README.md#testbench-exit-status).
+
+The outputs stay together under `results/source-to-search-30/`:
+
+- `sources/`: original sources and their HLS synthesis projects.
+- `traces/<design>/hls_<design>/solution1/trace.pkl`: newly generated traces.
+- `traces/manifest.json`: the new 30-design trace manifest used by SGRM.
+- `search/<design>.json`: selected FIFO depths, implementations, and metrics.
+- `search/index.json`: batch completion status and search parameters.
+
+The dedicated directory avoids conflicts with an earlier `gemm` walkthrough.
+Existing runs are not deleted or overwritten. For an independent rerun, choose
+a new directory name consistently throughout the block. If tools are installed
+outside standard locations, add the same `--tool-root /path/to/AMD` (or explicit
+tool selection) to the check, synthesis, and export commands; see
+[tool selection](trace_generation/README.md#tool-selection).
+
+### Check against the supplied-trace search results
+
+After completing the supplied-trace searches above, run the following without
+repeating synthesis, trace generation, or search:
+
+```bash
+sgrm-build-manifest \
+  --trace-root results/source-to-search-30/traces \
+  --design-list datasets/stream_hls_30.txt \
+  --expected-results-dir results/stream-hls-30 \
+  --output results/source-to-search-30/traces/reference-manifest.json
+
+sgrm-verify-results \
+  --manifest results/source-to-search-30/traces/reference-manifest.json \
+  --results-dir results/source-to-search-30/search
+```
+
+This checks the source-generated searches against the verified supplied-trace
+results, including baseline/selected cycles, modeled resources, evaluation
+counts, and reductions. It should print 30 `PASS` lines. Serialized file
+identity and host-dependent wall time are not required to match. The original
+manifest and all trace files remain unchanged.
+
+To measure resources for these new search results, continue with
+[hardware-source preparation](trace_generation/README.md#5-prepare-hardware-sources-for-the-regenerated-search).
+Do not use the supplied source/trace mapping unchanged with regenerated traces.
+
 ## Reproduce post-synthesis resources
 
 The source archive contains all 30 original Stream-HLS C++ designs,
@@ -93,7 +203,12 @@ LUT/SRL-, BRAM-, and URAM-backed FIFO configurations.
 
 ### 1. Prepare the original and selected source copies
 
-After the searches, run:
+The commands below continue the supplied-trace searches in
+`results/stream-hls-30`. If you generated new traces, use
+[their hardware-source preparation](trace_generation/README.md#5-prepare-hardware-sources-for-the-regenerated-search)
+instead, preserving the new source/trace mapping.
+
+For the supplied-trace results, run:
 
 ```bash
 python hardware_validation/validate_hardware.py \
@@ -237,14 +352,14 @@ AMD installation and generated synthesis projects require additional space.
 Reserve several tens of GiB for the full hardware workflow, in addition to
 the AMD installation. Storage and runtime depend on your host and parallelism.
 
-## Optional trace regeneration
+## Trace-generation source
 
 The complete local modified LightningSim source is included under
-[third_party/lightningsim](third_party/lightningsim). To regenerate execution
-traces from completed HLS synthesis projects, use the separate environment,
-source-build helper, and exporter in [Trace generation](trace_generation/README.md).
-This is optional: the standard searches above continue to use the supplied
-traces without running a simulator or installing AMD tools.
+[third_party/lightningsim](third_party/lightningsim). The
+[source-to-search guide](trace_generation/README.md) covers its build, portable
+tool selection, and exports from completed synthesis projects. The full
+30-design workflow above connects those exports directly to SGRM. Using the
+supplied traces simply skips synthesis and export.
 
 The guide covers environment setup, HLS tool selection, source synthesis,
 trace export, reference comparison, and hardware-source preparation.
@@ -284,7 +399,7 @@ selected/native cost ratios.
 - [Evaluator interface](docs/interfaces.md)
 - [Resource model](docs/resource-model.md)
 - [Repository scope](docs/repository-scope.md)
-- [Optional trace generation and local LightningSim source](trace_generation/README.md)
+- [Source-to-search workflow and local LightningSim source](trace_generation/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)

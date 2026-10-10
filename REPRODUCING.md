@@ -5,6 +5,12 @@ Each result records the selected FIFO depths and implementations, latency,
 modeled resources, search parameters, and evaluated-point count. The supplied
 traces require no generation step or separate simulator command.
 
+To start from the original C++ sources instead, follow the
+[complete 30-design source-to-search workflow](README.md#reproduce-all-30-searches-from-original-sources).
+It generates all 30 traces, builds their new manifest, and runs the same SGRM
+search and verifier without switching environments or using the supplied
+trace files. The result fields below apply to both starting points.
+
 ## Prerequisites
 
 Use Linux x86-64 with Conda. The environment file installs Python 3.12 and the

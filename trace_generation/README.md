@@ -1,16 +1,18 @@
-# Generate traces from HLS sources
+# Reproduce SGRM from HLS sources
 
-This optional workflow builds and uses the complete local modified LightningSim
-source included in [third_party/lightningsim](../third_party/lightningsim).
-It is independent of the standard supplied-trace searches: those searches do
-not require this setup or AMD tools.
+This workflow starts with the original C++ sources, generates execution traces,
+and feeds those new traces directly into SGRM search and result verification.
+It uses the complete local modified LightningSim source included in
+[third_party/lightningsim](../third_party/lightningsim). The generator and SGRM
+run in the same environment. The supplied traces are an alternative starting
+point that skips synthesis and export, not a different search implementation.
 
 The source includes the local Python/Rust backend, C++ trace runtime, FMADD
 helpers, and the Versal schedule compatibility layer. The unchanged LLVM
 instrumenter, SystemC runtime, and web assets come from the pinned upstream
 LightningSim 0.2.6 Conda package. No private runtime binary is required.
 
-## 1. Build in a separate environment
+## 1. Build the source-to-search environment
 
 Run from the repository root on Linux x86-64 with Conda available:
 
@@ -25,23 +27,54 @@ python -m pytest
 
 Expected build/check output ends with `LOCAL LIGHTNINGSIM BUILD PASS`. The helper
 compiles both the Rust extension and C++ trace runtime from the included source
-and verifies the imported package/core locations and FMADD symbols. Keep this
-environment separate from `.conda-sgrm`.
+and verifies the imported package/core locations and FMADD symbols. The editable
+SGRM installation supplies the search, manifest, and verification commands.
+Keep this environment activated for every step, including search; there is no
+need to create or switch to `.conda-sgrm` for this workflow.
 Use `--jobs 1` through `--jobs 16` to control build parallelism.
 
 Keep this checkout at the same location after an editable installation; rebuild
 if you move it. The commands below do not need Node.js or a web server.
 
-## 2. Complete HLS C synthesis
+## 2. Generate all 30 traces and run SGRM
+
+The source archive contains all 30 original designs, not just `gemm`. After
+step 1, run the [complete 30-design command block in the main README](../README.md#reproduce-all-30-searches-from-original-sources).
+That block performs the following sequence without changing environments:
+
+```text
+original sources -> HLS C synthesis -> 30 new traces
+                 -> new 30-design manifest -> SGRM search -> result verification
+```
+
+All artifacts stay under `results/source-to-search-30/`. The search reads
+`traces/manifest.json` in that directory and writes `search/<design>.json`;
+it never substitutes the supplied trace archive. The design-list check prevents
+an incomplete export from becoming a successful smaller batch. A dedicated
+source copy also avoids reusing projects from a previous single-design test.
+
+The block requires classic Vitis HLS 2024.2, VCK190 support, and licenses. It
+does not require Vivado or a board, and does not run RTL co-simulation. Use
+[tool selection](#tool-selection) if the AMD installation is not discovered.
+For comparison against the verified supplied-trace results, continue with
+[the reference check](../README.md#check-against-the-supplied-trace-search-results)
+in the main README. For measured resources, continue to step 5 below.
+
+## 3. Single-design walkthrough: gemm (optional)
+
+Use this smaller walkthrough instead of step 2 to try one design first. Its
+source and output directories are separate from the complete 30-design run.
 
 To perform C synthesis, install Vitis HLS 2024.2 with its classic Tcl interface,
 VCK190 device support, and required licenses. For an already completed project,
 the exporter can use the matching 2024.2 headers/runtime directly as described
-in step 3. Vivado is not required for trace generation. No physical board is
-needed. AMD executables, headers, and licenses are not distributed here.
+under [Export a fresh trace](#export-a-fresh-trace). Vivado is not required for
+trace generation. No physical board is needed. AMD executables, headers, and
+licenses are not distributed here.
 
-For an existing completed HLS project, skip to step 3. To start with the original
-`gemm` source included in this repository:
+For an existing completed HLS project, skip to
+[Export a fresh trace](#export-a-fresh-trace). To start with the original `gemm`
+source included in this repository:
 
 ```bash
 python datasets/check_bundles.py
@@ -76,6 +109,8 @@ It uses the original `hls.tcl` with `gemm syn`, retains `hls_synthesis.log`,
 and checks the completed outputs needed by the exporter. The default stage is
 `plan`, so omitting `--stage` cannot accidentally start a hardware job.
 
+### Tool selection
+
 For an installation outside common locations, add its actual installation
 base to **each** tool-dependent command (replace the example path):
 
@@ -88,8 +123,9 @@ python trace_generation/run_hls.py --design gemm --stage run --tool-root /path/t
 Alternatively use `--vitis-hls /path/to/Vitis_HLS/2024.2/bin/vitis_hls` to select
 a classic executable explicitly, or `--settings /path/to/site-settings.sh`
 for trusted site-specific setup. Use the same selection options for the
-export command in step 3. `--sources-dir` accepts a source bundle extracted
-elsewhere. Use paths from your own installation.
+export command. In the full 30-design loop, add them to both Python commands
+inside the loop as well as its tool precheck. `--sources-dir` accepts a source
+bundle extracted elsewhere. Use paths from your own installation.
 Shell aliases do not select a tool for Python; use an executable path instead.
 
 If only the unified CLI is installed, install the matching classic Tcl
@@ -106,7 +142,7 @@ The original settings are top `forward`, part `xcvc1902-vsva2197-2MP-e-S`,
 it does not run RTL co-simulation or Vivado implementation. Do not alter these
 settings when checking the reference workload.
 
-## 3. Export a fresh trace
+### Export a fresh trace
 
 With the generation environment active, run:
 
@@ -176,9 +212,11 @@ python trace_generation/generate_trace.py \
 Incomplete synthesis, parsing/linking failures, invalid FIFO metadata, or
 baseline deadlock always reject export.
 
-## 4. Search and verify the regenerated traces
+## 4. Search and verify the single-design trace
 
-In the same generation environment:
+Continue the `gemm` walkthrough in the same environment. If you followed the
+full 30-design block in step 2, its search and verification are already included;
+do not replace those paths with the single-design paths below.
 
 ```bash
 sgrm-build-manifest \
@@ -206,13 +244,11 @@ fields, including baseline/selected cycles, resource estimates, evaluation
 counts, and reductions. Runtime and serialized file identity are not expected
 to be identical across machines or freshly generated traces.
 
-The same synthesis/export procedure applies to each design in
-`datasets/stream_hls_30.txt`. Keep the output layout
-`<design>/hls_<design>/solution1/trace.pkl` so the manifest builder can discover
-the regenerated designs. Add `--design-list datasets/stream_hls_30.txt` to the
-manifest command to require all 30 traces rather than a selected subset.
+For all 30 designs, use step 2 rather than manually repeating this example.
+The full workflow supplies `--design-list datasets/stream_hls_30.txt` when
+building the new manifest, making all 30 exports mandatory.
 
-## 5. Prepare hardware sources for a regenerated search
+## 5. Prepare hardware sources for the regenerated search
 
 The published source manifest is bound to the supplied traces. For a freshly
 generated trace, first derive a separate mapping after checking exact FIFO IDs,
@@ -220,22 +256,26 @@ names, widths, baseline depths, and original source-file integrity:
 
 ```bash
 python trace_generation/bind_sources.py \
-  --sources-dir sgrm-stream-hls-30-sources-v0.1.0 \
-  --manifest results/regenerated-traces/manifest.json \
-  --output-dir results/regenerated-sources
+  --sources-dir results/source-to-search-30/sources/sgrm-stream-hls-30-sources-v0.1.0 \
+  --manifest results/source-to-search-30/traces/manifest.json \
+  --output-dir results/source-to-search-30/hardware-sources
 
 python hardware_validation/validate_hardware.py \
-  --sources-dir results/regenerated-sources \
-  --results-dir results/regenerated-search \
-  --output-dir results/regenerated-hardware \
-  --design gemm \
+  --sources-dir results/source-to-search-30/hardware-sources \
+  --results-dir results/source-to-search-30/search \
+  --output-dir results/source-to-search-30/hardware \
   --stage prepare
 ```
 
-Expected preparation output begins with `PREPARED 1 paired designs (2 hardware
-jobs)`. The original sources/manifest remain unchanged, and preparation does
-not start synthesis. Subsequent resource measurements follow
-[Hardware validation](../hardware_validation/README.md).
+These commands continue the full 30-design source-to-search run. Expected
+preparation output begins with `PREPARED 30 paired designs (60 hardware jobs)`.
+For a subset, add options such as `--design gemm` to the preparation command.
+To continue the single-design walkthrough instead, substitute its source,
+trace-manifest, and search-result paths and select `--design gemm`.
+The original sources/manifest remain unchanged, and preparation does not start
+synthesis. Subsequent resource measurements follow
+[Hardware validation](../hardware_validation/README.md); the run/report stages
+must use the same `results/source-to-search-30/hardware` output directory.
 
 Only load trusted trace files. Pickle can execute code; an integrity check does
 not make an untrusted pickle safe. See [Security](../SECURITY.md).
