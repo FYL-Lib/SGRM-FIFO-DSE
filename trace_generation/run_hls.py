@@ -45,9 +45,9 @@ def source_project(sources_dir: Path, design: str) -> Path:
 
 
 def synthesis_command(executable: str, design: str) -> list[str]:
-    # Only call this after classic-interface and version checks. Tcl argv stays
-    # [design, syn], so the original script performs csynth_design only.
-    return [executable, "-l", "hls_synthesis.log", "-f", "hls.tcl", design, "syn"]
+    # The classic 2024.2 positional-script interface leaves Tcl argv as
+    # [design, syn]. Adding -f here shifts those arguments in the AMD launcher.
+    return [executable, "-l", "hls_synthesis.log", "hls.tcl", design, "syn"]
 
 
 def invoke_hls(command: list[str], project: Path, environment: dict[str, str]) -> int:

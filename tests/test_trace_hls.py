@@ -4,8 +4,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
+import tarfile
 from types import SimpleNamespace
 
 import pytest
@@ -109,7 +112,8 @@ def test_plan_skips_unified_path_wrapper_and_handles_spaces(tmp_path, monkeypatc
     output = capsys.readouterr().out
     assert str(executable) in output and "PLAN PASS" in output
     assert str(sources / "gemm") in output
-    assert "-f hls.tcl gemm syn" in output
+    assert "hls.tcl gemm syn" in output
+    assert "-f hls.tcl" not in output
     assert not list(unrelated.iterdir())
 
 
@@ -228,7 +232,7 @@ def test_successful_run_uses_original_syn_branch_and_checks_export_outputs(tmp_p
     monkeypatch.setattr(run_hls, "invoke_hls", invoke)
     before = dict(os.environ)
     assert run_hls.main(["--design", "gemm", "--stage", "run", "--vitis-hls", str(executable)]) == 0
-    assert observed["command"] == [str(executable), "-l", "hls_synthesis.log", "-f", "hls.tcl", "gemm", "syn"]
+    assert observed["command"] == [str(executable), "-l", "hls_synthesis.log", "hls.tcl", "gemm", "syn"]
     assert observed["project"] == sources / "gemm"
     assert observed["environment"]["SGRM_TRACE_TEST_READY"] == "loaded"
     assert dict(os.environ) == before
@@ -252,7 +256,7 @@ def test_invoke_hls_passes_argv_cwd_and_private_environment_without_a_shell(tmp_
         return SimpleNamespace(returncode=3)
 
     monkeypatch.setattr(run_hls.subprocess, "run", fake_run)
-    command = ["/vendor path/bin/vitis_hls", "-f", "hls.tcl", "gemm", "syn"]
+    command = ["/vendor path/bin/vitis_hls", "-l", "hls_synthesis.log", "hls.tcl", "gemm", "syn"]
     environment = {"PATH": "/vendor/bin", "PWD": "/old location"}
     assert run_hls.invoke_hls(command, tmp_path, environment) == 3
     assert observed["command"] == command and observed["cwd"] == tmp_path
@@ -269,3 +273,74 @@ def test_incomplete_or_ambiguous_cli_stops_before_tools(monkeypatch, arguments):
     with pytest.raises(SystemExit) as error:
         run_hls.main(arguments)
     assert error.value.code == 2
+
+
+@pytest.fixture(scope="module")
+def original_tcl_contract(tmp_path_factory):
+    """Execute the archived Tcl with stub HLS commands, not a mocked argv list.
+
+    This checks all original scripts' project/source/action selection without
+    AMD tools. Real AMD argument forwarding is also checked separately by the
+    source-to-trace integration validation documented in VALIDATION.md.
+    """
+    tclsh = shutil.which("tclsh")
+    if not tclsh:
+        pytest.skip("Tcl interpreter is unavailable; no AMD tool is invoked")
+    root = tmp_path_factory.mktemp("original Tcl contracts with spaces")
+    driver = root / "contract.tcl"
+    driver.write_text(
+        'set script [lindex $argv 0]\n'
+        'set argv [lrange $argv 1 end]\n'
+        'proc open_project {name} {puts "PROJECT $name"}\n'
+        'proc add_files {args} {puts "SOURCE $args"}\n'
+        'foreach name {set_top open_solution set_part create_clock config_compile config_dataflow} {\n'
+        '    proc $name {args} {}\n'
+        '}\n'
+        'proc csynth_design {} {puts "ACTION SYNTHESIS"}\n'
+        'foreach name {csim_design cosim_design export_design get_clock_period} {\n'
+        '    proc $name {args} {error "Unexpected hardware action"}\n'
+        '}\n'
+        'source $script\n'
+    )
+    launcher = root / "classic-launcher-contract"
+    launcher.write_text(
+        '#!/bin/sh\n'
+        'if [ "$1" = "-l" ]; then shift 2; fi\n'
+        f'exec {shlex.quote(tclsh)} {shlex.quote(str(driver))} "$@"\n'
+    )
+    launcher.chmod(0o755)
+    projects = {}
+    with tarfile.open(ROOT / "datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz") as archive:
+        for member in archive.getmembers():
+            path = Path(member.name)
+            if member.isfile() and path.name == "hls.tcl":
+                design = path.parent.name
+                project = root / design
+                project.mkdir()
+                (project / "hls.tcl").write_bytes(archive.extractfile(member).read())
+                projects[design] = project
+    assert len(projects) == 30
+    return launcher, projects
+
+
+@pytest.mark.parametrize("design", [
+    name for name in (ROOT / "datasets/stream_hls_30.txt").read_text().splitlines()
+    if name.strip() and not name.lstrip().startswith("#")
+])
+def test_original_tcl_selects_correct_design_and_synthesis_branch(original_tcl_contract, design):
+    launcher, projects = original_tcl_contract
+    completed = subprocess.run(run_hls.synthesis_command(str(launcher), design),
+                               cwd=projects[design], capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    lines = completed.stdout.splitlines()
+    assert lines == [f"PROJECT hls_{design}", f"SOURCE src/{design}.cpp",
+                     f"SOURCE -tb src/{design}_tb.cpp", "ACTION SYNTHESIS"]
+
+
+def test_original_tcl_contract_rejects_shifted_launcher_options(original_tcl_contract):
+    launcher, projects = original_tcl_contract
+    completed = subprocess.run([str(launcher), "-l", "hls_synthesis.log",
+                                "-f", "hls.tcl", "gemm", "syn"],
+                               cwd=projects["gemm"], capture_output=True, text=True, check=False)
+    assert completed.returncode != 0
+    assert "ACTION SYNTHESIS" not in completed.stdout

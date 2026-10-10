@@ -79,6 +79,11 @@ It uses the original `hls.tcl` with `gemm syn`, retains `hls_synthesis.log`,
 and checks the completed outputs needed by the exporter. The default stage is
 `plan`, so omitting `--stage` cannot accidentally start a hardware job.
 
+The displayed command uses the classic positional-script form
+`vitis_hls -l hls_synthesis.log hls.tcl gemm syn`. Do not insert `-f`: these
+original scripts consume Tcl arguments, and that option shifts their design
+and action arguments in the 2024.2 launcher.
+
 For an installation outside common locations, add its actual installation
 base to **each** tool-dependent command (replace the example path):
 
@@ -105,6 +110,19 @@ does not install or emulate them.
 Existing HLS projects and logs are not overwritten. Export a completed project
 directly, or extract the archive in a new directory and pass `--sources-dir`
 for an independent synthesis run.
+
+If an earlier attempt created `hls_-f` or printed `src/-f.cpp`, retain that
+failed attempt and extract a fresh source copy in a different directory:
+
+```bash
+mkdir -p results/fresh-source-check
+tar -xJf datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz -C results/fresh-source-check
+python trace_generation/run_hls.py --design gemm --stage run \
+  --sources-dir results/fresh-source-check/sgrm-stream-hls-30-sources-v0.1.0
+```
+
+Use a new, empty directory for this retry. In step 3, point `--solution-dir`
+to the successful project's location printed by this command.
 
 The original settings are top `forward`, part `xcvc1902-vsva2197-2MP-e-S`,
 10 ns, `open_solution -flow_target vivado`, and

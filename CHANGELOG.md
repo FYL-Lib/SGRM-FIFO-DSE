@@ -4,6 +4,9 @@ All notable changes to the SGRM core package are documented here.
 
 ## Unreleased
 
+- Fixed the original-source HLS command to preserve Tcl design/action arguments
+  with the classic 2024.2 positional-script interface; added executable Tcl
+  contract tests for all 30 archived scripts.
 - Added a portable original-source HLS entry point with separate tool-check,
   command-preview, and synthesis stages; trace-generation instructions no
   longer rely on a bare launcher name or manual shell-environment changes.
