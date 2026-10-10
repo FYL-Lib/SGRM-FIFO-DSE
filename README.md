@@ -16,9 +16,9 @@ to select FIFO configurations. The hardware-validation workflow applies those
 configurations to the original C++ designs and measures their FIFO-subsystem
 resources with Vitis HLS and Vivado.
 
-The standard reproduction workflow has two independent setup steps: the searches and source preparation
-need only the Python environment below; hardware resource measurements also
-need separately installed AMD tools. Conda does not install those tools.
+Searches and source preparation need only the Python environment below.
+Hardware resource measurements also need separately installed AMD tools;
+Conda does not install those tools.
 
 To generate new traces from the original sources instead of using the supplied
 traces, follow the separate [source-to-trace guide](trace_generation/README.md).
@@ -73,9 +73,8 @@ sgrm-verify-results \
   --results-dir results/stream-hls-30
 ```
 
-Each command should print 30 `PASS` lines with no `FAIL`. The sequential
-search batch took approximately 127 seconds on the tested workstation; runtime
-on other hosts can differ. These steps do not invoke AMD tools.
+Each command should print 30 `PASS` lines with no `FAIL`. These steps do not
+invoke AMD tools.
 
 Each `results/stream-hls-30/<design>.json` records the selected FIFO depths,
 explicit storage implementations, trace latency, modeled resources, and
@@ -83,7 +82,7 @@ provenance. `index.json` records the batch status. The resource estimates in
 the search JSON are distinct from the post-synthesis measurements below.
 
 See [Reproducing the SGRM searches](REPRODUCING.md) for the small included
-`bicg` example, exact environment details, and result-field definitions.
+`bicg` example, setup instructions, and result-field definitions.
 
 ## Reproduce post-synthesis resources
 
@@ -115,7 +114,7 @@ The selected copies use your own search JSON, not a preselected configuration.
 Every selected FIFO receives its requested depth and an explicit
 `bind_storage type=fifo impl=...` directive, including SRL.
 
-Inspect the generated files with actual shell commands:
+Inspect the generated files:
 
 ```bash
 ls -l results/three-design-hardware/
@@ -181,10 +180,6 @@ two simultaneous hardware jobs. Placement/routing is not needed for these
 post-synthesis resource measurements. The workflow does not run RTL
 co-simulation.
 
-The native/selected `bicg` pair took approximately 40.5 minutes with two
-parallel jobs on the tested workstation; `ResidualBlock` took approximately
-3.5 minutes. These are per-design observations, not a promised six-job total.
-
 Logs, exact sources, scripts, and raw reports are retained in each work
 directory. Repeat the run command to resume: successful jobs are reused only
 when their input fingerprints and report checksums still match. The
@@ -239,10 +234,8 @@ raw resource reference table.
 Allow approximately 1.5 GiB for the search environment, extracted traces, and
 search results. The source archive is approximately 28 MiB compressed.
 AMD installation and generated synthesis projects require additional space.
-Retained projects for all 60 hardware jobs occupied approximately 10.8 GiB
-on the tested workstation, excluding the tools and transient files; reserve
-several tens of GiB for generated projects. A 4 TB SSD is not a minimum
-requirement.
+Reserve several tens of GiB for the full hardware workflow, in addition to
+the AMD installation. Storage and runtime depend on your host and parallelism.
 
 ## Optional trace regeneration
 
@@ -253,18 +246,8 @@ source-build helper, and exporter in [Trace generation](trace_generation/README.
 This is optional: the standard searches above continue to use the supplied
 traces without running a simulator or installing AMD tools.
 
-After setting up the separate generation environment, the HLS entry point is:
-
-```bash
-python trace_generation/run_hls.py --stage check-tools
-python trace_generation/run_hls.py --design gemm --stage plan
-```
-
-Neither command starts synthesis. The guide's explicit `--stage run` command
-uses the verified classic 2024.2 launcher, not whichever executable happens to
-be named `vitis_hls` on `PATH`. Installation locations need not match this
-workstation; nonstandard installations can use `--tool-root` or `--vitis-hls`.
-Extract the source archive as shown in the guide before planning a synthesis.
+The guide covers environment setup, HLS tool selection, source synthesis,
+trace export, reference comparison, and hardware-source preparation.
 
 ## Algorithm and resource objective
 

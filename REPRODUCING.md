@@ -5,17 +5,12 @@ Each result records the selected FIFO depths and implementations, latency,
 modeled resources, search parameters, and evaluated-point count. The supplied
 traces require no generation step or separate simulator command.
 
-## Tested environment
+## Prerequisites
 
-| Component | Tested value |
-|---|---|
-| Operating system | Ubuntu 24.04.3, Linux 6.8, x86-64 |
-| CPU | Intel Core Ultra 9 285K |
-| Python | 3.12.13 |
-| Conda | 26.1.1 |
-| Peak resident memory | 380 MiB on `FeedForward_large` |
-
-Allow approximately 1.5 GiB of free disk space for the environment, extracted 30-design bundle, and result files. CPU model and core count are not fixed requirements; searches run sequentially by default.
+Use Linux x86-64 with Conda. The environment file installs Python 3.12 and the
+pinned search dependencies. Allow approximately 1.5 GiB of free disk space for
+the environment, extracted traces, and results. Searches run sequentially by
+default and do not require AMD tools or a physical FPGA board.
 
 ## Install
 
@@ -96,7 +91,8 @@ sgrm-verify-results \
   --results-dir results/stream-hls-30
 ```
 
-Success is 30 `PASS` lines from each command. On the tested workstation, the sequential batch completed in approximately 127 seconds; timing is system-dependent and is not a reference-value check.
+Success is 30 `PASS` lines from each command. Runtime depends on the host and
+is not a reference-value check.
 
 The batch runner continues after a per-design error and returns a nonzero exit status if any design fails. Add `--fail-fast` to stop at the first failure. Every result is written as `<design>.json`; `index.json` records the manifest checksum, global parameters, statuses, and total wall time.
 

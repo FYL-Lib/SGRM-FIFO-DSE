@@ -45,11 +45,8 @@ the 1.5 GiB search-replay allowance does not cover synthesis. Storage and runtim
 depend on the chosen parallelism and tool installation. Start with one paired
 design to measure the requirements on your host.
 
-For scale, retained native/SGRM projects for these 60 jobs occupied
-approximately 10.8 GiB, excluding the AMD installation and transient working
-files. This is an observed retained size, not a peak-space guarantee; reserving
-several tens of GiB for generated projects is prudent. A 4 TB SSD is not a
-minimum requirement.
+Reserve several tens of GiB for the full hardware workflow, in addition to
+the AMD installation.
 
 ## One command for all 60 jobs
 
@@ -159,10 +156,8 @@ design is silently removed from a complete-corpus aggregate. A selected
 configuration is rejected if HLS reports automatically increasing its FIFO
 depth, rather than silently measuring a different configuration.
 
-Existing plans created by earlier releases remain supported: `run` and
-`report` use the work directories recorded in their plan. When preparing
-after a script update or changing FIFO choices, choose a fresh `--output-dir`
-to preserve existing projects and measurements.
+Choose a fresh `--output-dir` when changing FIFO choices or the measurement
+protocol. The `run` and `report` stages use the prepared plan.
 
 Rebuild the summaries without invoking tools:
 
@@ -200,14 +195,11 @@ ratio[design] = Cutil_selected[design] / Cutil_native[design]
 geometric-mean reduction (%) = 100 * (1 - geometric_mean(ratio))
 ```
 
-These exact device capacities match the search model. An archived table using
-rounded FF/LUT capacities can differ slightly before rounding. The CSV also
-records HLS schedule estimates and post-synthesis clock estimates, clearly
-separated from the trace latencies in the search results.
+These device capacities match the search model. The CSV records HLS schedule
+estimates and post-synthesis clock estimates separately from trace latencies.
 
-Search time is copied from the supplied JSON `wall_time_s`, including trace
-initialization; it is not the paper's optimizer-only wall time. HLS and Vivado
-durations are recorded separately. No synthesis time is counted as DSE time.
+Search time comes from the result JSON's `wall_time_s` and includes trace
+initialization. HLS and Vivado durations are recorded separately.
 
 The 60-job workflow verifies SGRM against the original Stream-HLS baseline
 across the complete 30-design corpus.

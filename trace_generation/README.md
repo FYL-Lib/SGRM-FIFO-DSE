@@ -9,8 +9,6 @@ The source includes the local Python/Rust backend, C++ trace runtime, FMADD
 helpers, and the Versal schedule compatibility layer. The unchanged LLVM
 instrumenter, SystemC runtime, and web assets come from the pinned upstream
 LightningSim 0.2.6 Conda package. No private runtime binary is required.
-See [Validation results](VALIDATION.md) for the tested environment and the
-separate trace-export, search-reproduction, and testbench-status checks.
 
 ## 1. Build in a separate environment
 
@@ -27,13 +25,12 @@ python -m pytest
 
 Expected build/check output ends with `LOCAL LIGHTNINGSIM BUILD PASS`. The helper
 compiles both the Rust extension and C++ trace runtime from the included source
-and verifies the imported package/core locations and FMADD symbols. It does not
-modify `.conda-sgrm`, old experiment environments, or shared Conda cache files.
+and verifies the imported package/core locations and FMADD symbols. Keep this
+environment separate from `.conda-sgrm`.
 Use `--jobs 1` through `--jobs 16` to control build parallelism.
 
 Keep this checkout at the same location after an editable installation; rebuild
-if you move it. The upstream GUI source and build recipe are retained, but the
-headless export commands below do not need Node.js or a web server.
+if you move it. The commands below do not need Node.js or a web server.
 
 ## 2. Complete HLS C synthesis
 
@@ -79,11 +76,6 @@ It uses the original `hls.tcl` with `gemm syn`, retains `hls_synthesis.log`,
 and checks the completed outputs needed by the exporter. The default stage is
 `plan`, so omitting `--stage` cannot accidentally start a hardware job.
 
-The displayed command uses the classic positional-script form
-`vitis_hls -l hls_synthesis.log hls.tcl gemm syn`. Do not insert `-f`: these
-original scripts consume Tcl arguments, and that option shifts their design
-and action arguments in the 2024.2 launcher.
-
 For an installation outside common locations, add its actual installation
 base to **each** tool-dependent command (replace the example path):
 
@@ -97,32 +89,16 @@ Alternatively use `--vitis-hls /path/to/Vitis_HLS/2024.2/bin/vitis_hls` to selec
 a classic executable explicitly, or `--settings /path/to/site-settings.sh`
 for trusted site-specific setup. Use the same selection options for the
 export command in step 3. `--sources-dir` accepts a source bundle extracted
-elsewhere. These paths belong to your installation, not to the authors' host.
+elsewhere. Use paths from your own installation.
 Shell aliases do not select a tool for Python; use an executable path instead.
 
-An explicitly selected incompatible tool stops the command before synthesis;
-it is never silently replaced. If only the unified CLI is installed, install
-the matching classic Tcl interface or use an already completed 2024.2 project
-with the runtime-only export described below. A compatible AMD installation,
-licenses, and device support remain external prerequisites; this repository
-does not install or emulate them.
+If only the unified CLI is installed, install the matching classic Tcl
+interface for synthesis, or use an already completed 2024.2 project with the
+runtime-only export described below.
 
 Existing HLS projects and logs are not overwritten. Export a completed project
 directly, or extract the archive in a new directory and pass `--sources-dir`
 for an independent synthesis run.
-
-If an earlier attempt created `hls_-f` or printed `src/-f.cpp`, retain that
-failed attempt and extract a fresh source copy in a different directory:
-
-```bash
-mkdir -p results/fresh-source-check
-tar -xJf datasets/sgrm-stream-hls-30-sources-v0.1.0.tar.xz -C results/fresh-source-check
-python trace_generation/run_hls.py --design gemm --stage run \
-  --sources-dir results/fresh-source-check/sgrm-stream-hls-30-sources-v0.1.0
-```
-
-Use a new, empty directory for this retry. In step 3, point `--solution-dir`
-to the successful project's location printed by this command.
 
 The original settings are top `forward`, part `xcvc1902-vsva2197-2MP-e-S`,
 10 ns, `open_solution -flow_target vivado`, and
@@ -166,11 +142,8 @@ and must come from the 2024.2 installation used for synthesis. The synthesis
 report's version is also checked. `--hls-root` is an alternative to
 `--vitis-hls`/`--tool-root`; no HLS executable is invoked in this mode.
 
-The exporter checks the completed synthesis reports and bitcode directly. It
-does not wait for or fabricate `.autopilot/db/dut.hcp`. It sets `PRJ_PATH` to the
-source project directory, uses the built local fork, applies the original
-Versal compatibility layer, and raises only its own stack soft limit for large
-testbenches. Use `--project-dir` when workload data resides elsewhere.
+The exporter uses the completed synthesis reports and bitcode. Use
+`--project-dir` when workload data resides outside the source project directory.
 
 Expected `gemm` output contains:
 
@@ -186,19 +159,10 @@ objects; it is not needed for normal use.
 
 ### Testbench exit status
 
-The original local runner resolves execution traces separately from the final
-testbench exit code. The exporter preserves that policy and records both
-`trace_exported` and `testbench_passed`. Console output reports trace-export
-progress; the generation record retains the original testbench exit status.
-Some original
-floating-point reference-output assertions can fail after the kernel finishes;
-the exporter does not edit assertions, inputs, reference outputs, or tolerance.
-
-The exporter does not add duplicate warning messages to the console or logs.
-The original return code and `testbench_passed` remain in
-`trace.generation.json`, and captured subprocess output remains in
-`trace.processes.json`. Saving a trace is not a claim that the numerical
-testbench check passed.
+Trace export and numerical testbench checks have separate statuses.
+`trace.generation.json` records `trace_exported`, `testbench_passed`, and the
+testbench exit code; `trace.processes.json` contains subprocess output.
+An exported trace does not by itself mean the numerical assertions passed.
 
 For an export that requires a successful testbench exit as well, add:
 
@@ -209,9 +173,8 @@ python trace_generation/generate_trace.py \
   --strict-testbench
 ```
 
-Failed parsing, linking, incomplete synthesis, invalid FIFO metadata, or baseline
-deadlock always rejects export. Inspect the generation/process
-logs rather than treating a saved trace as a functional-verification result.
+Incomplete synthesis, parsing/linking failures, invalid FIFO metadata, or
+baseline deadlock always reject export.
 
 ## 4. Search and verify the regenerated traces
 
