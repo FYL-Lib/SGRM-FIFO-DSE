@@ -65,12 +65,40 @@ system directories. Discovery located and checked the compatible 2024.2
 classic launcher and matching runtime without manual environment loading.
 Both stages passed and created no HLS project or synthesis log.
 
-The updated regression suite passed all 151 tests. Tool-free fixtures cover
-unified wrappers shadowing classic tools, incompatible releases, nonstandard
-installation roots, both directory layouts, relative and space-containing
-paths, private site settings, source integrity, and refusal to overwrite
-existing synthesis outputs. These checks do not start HLS or Vivado synthesis;
-the real synthesis run still requires AMD licenses and VCK190 device support.
+On 2026-10-10, the positional-script invocation was additionally tested with
+the actual classic 2024.2 launcher. An argument-only Tcl probe received exactly
+`gemm syn`; the original `gemm` source then completed a fresh C synthesis in
+70.17 seconds. No old synthesis project was reused. Tool discovery ran without
+preloaded AMD environment variables or AMD executables on `PATH`.
+
+A separate clean checkout and new Conda environment were used to build the
+included source and execute the documented export/search workflow:
+
+| Check | Result |
+|---|---|
+| Full regression suite in the new generation environment | 182 passed |
+| Supplied-trace searches and published-reference verification, rerun in that environment | 30/30 |
+| Original archived Tcl project/source/synthesis-branch contracts | 30/30 |
+| Regression rejection of the old shifted `-f` invocation | Pass |
+| Real classic-HLS argument probe and fresh `gemm` C synthesis | Pass |
+| Fresh strict-testbench `gemm` export with automatic tool discovery | Pass |
+| Fresh strict-testbench `gemm` export with runtime-only selection | Pass |
+| Both exports: testbench exit status / FIFO count / baseline cycles | 0 / 44 / 30,014 |
+| Regenerated `gemm` search versus published deterministic reference fields | Pass |
+| Every selected FIFO depth and implementation versus supplied-trace search | Identical |
+| Regenerated trace/source rebinding and paired hardware preparation | Pass |
+
+The Tcl contract tests execute all 30 unmodified archived scripts with stub
+HLS commands; they do not perform 30 synthesis runs. The real integration run
+synthesized `gemm`, exported new traces without loading an old trace, searched
+with budget 1000 / seed 1 / epsilon 0, and stopped after hardware preparation.
+No Vivado synthesis or RTL co-simulation was started in this validation.
+
+Other tool-free fixtures cover unified wrappers shadowing classic tools,
+incompatible releases, nonstandard installation roots, both directory layouts,
+relative and space-containing paths, private site settings, source integrity,
+and refusal to overwrite existing synthesis outputs. Real synthesis still
+requires AMD licenses and VCK190 device support.
 
 ## Testbench status is separate from trace export
 
